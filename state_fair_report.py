@@ -37,7 +37,7 @@ for name, group in df.groupby("id"):
     for _, row in group.iterrows():
         # Both op and rt seem to get reset randomly. These elements form what I
         # think is the unique ID of a trip.
-        this_trip = {k: row[k] for k in ["fs", "dd", "pid", "run", "bid", "id"]}
+        this_trip = {k: row[k] for k in ["fs", "id"]}
         this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
         print(
             f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}'
@@ -55,15 +55,17 @@ for name, group in df.groupby("id"):
                 current_fair_state == FairState.COMING_FROM_WEST
                 and last_fair_state == FairState.COMING_FROM_EAST
             ):
+                difference = row["retrieved_at"] - fair_started_at
                 print(
-                    f'{fair_started_at}: bus {row["id"]} begins a westbound trip arriving at {row["retrieved_at"]}'
+                    f'{fair_started_at}: bus {row["id"]} begins a westbound {row["fs"]} trip arriving {difference} later at {row["retrieved_at"]}'
                 )
             elif (
                 current_fair_state == FairState.COMING_FROM_EAST
                 and last_fair_state == FairState.COMING_FROM_WEST
             ):
+                difference = row["retrieved_at"] - fair_started_at
                 print(
-                    f'{fair_started_at}: bus {row["id"]} begins an eastbound trip arriving at {row["retrieved_at"]}'
+                    f'{fair_started_at}: bus {row["id"]} begins an eastbound trip arriving {difference} later at {row["retrieved_at"]}'
                 )
             elif current_fair_state == FairState.UNCLEAR:
                 current_fair_state = last_fair_state

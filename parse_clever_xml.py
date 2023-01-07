@@ -31,7 +31,7 @@ def etree_to_dict(t):
     return d
 
 example_file = './buses2022-03-01T01:30:04.xml'
-relevant_keys = ['id', 'rt', 'dd', 'dn', 'lat', 'lon', 'pid', 'run', 'op', 'bid', 'fs']
+relevant_keys = ['id', 'lat', 'lon', 'fs']
 
 def time_from_filename(filename):
   date_str = re.search('buses(.+)\.xml', filename).group(1)
