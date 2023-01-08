@@ -8,16 +8,16 @@ STATE_FAIR_HEADSIGN = "901 State Fair - Hub"
 
 
 class FairState(Enum):
-    COMING_FROM_EAST = 0
-    COMING_FROM_WEST = 1
+    GOING_TO_FAIR = 0
+    COMING_FROM_FAIR = 1
     UNCLEAR = 2
 
 
 def fair_state_from_lon(lon):
     if lon < WESTERN_LINE:
-        return FairState.COMING_FROM_WEST
+        return FairState.COMING_FROM_FAIR
     elif lon > EASTERN_LINE:
-        return FairState.COMING_FROM_EAST
+        return FairState.GOING_TO_FAIR
     else:
         return FairState.UNCLEAR
 
@@ -52,20 +52,20 @@ for name, group in df.groupby("id"):
         if this_trip["fs"] == STATE_FAIR_HEADSIGN:
             current_fair_state = fair_state_from_lon(float(row["lon"]))
             if (
-                current_fair_state == FairState.COMING_FROM_WEST
-                and last_fair_state == FairState.COMING_FROM_EAST
+                current_fair_state == FairState.COMING_FROM_FAIR
+                and last_fair_state == FairState.GOING_TO_FAIR
             ):
                 difference = row["retrieved_at"] - fair_started_at
                 print(
-                    f'{fair_started_at}: bus {row["id"]} begins a westbound {row["fs"]} trip arriving {difference} later at {row["retrieved_at"]}'
+                    f'{fair_started_at}: bus {row["id"]} begins a fairgrounds-bound trip on the {row["fs"]} route arriving {difference} later at {row["retrieved_at"]}'
                 )
             elif (
-                current_fair_state == FairState.COMING_FROM_EAST
-                and last_fair_state == FairState.COMING_FROM_WEST
+                current_fair_state == FairState.GOING_TO_FAIR
+                and last_fair_state == FairState.COMING_FROM_FAIR
             ):
                 difference = row["retrieved_at"] - fair_started_at
                 print(
-                    f'{fair_started_at}: bus {row["id"]} begins an eastbound trip arriving {difference} later at {row["retrieved_at"]}'
+                    f'{fair_started_at}: bus {row["id"]} leaves the fairgrounds on the {row["fs"]} route arriving {difference} later at {row["retrieved_at"]}'
                 )
             elif current_fair_state == FairState.UNCLEAR:
                 current_fair_state = last_fair_state
