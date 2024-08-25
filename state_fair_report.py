@@ -8,7 +8,7 @@ HUB_EASTERN_LINE = -76.15868904560217
 HUB_WESTERN_LINE = -76.20110727999335
 HUB_HEAD_SIGN = "901 State Fair - Hub"
 DESTINY_EASTERN_LINE =  -76.176634
-DESTINY_WESTERN_COORDS = (43.062043, HUB_WESTERN_LINE)
+DESTINY_WESTERN_LINE = HUB_WESTERN_LINE
 DESTINY_HEAD_SIGN = "909 Destiny USA"
 LONG_BRANCH_HEAD_SIGN = "907 Long Branch Park"
 
@@ -26,6 +26,14 @@ def figure_fair_state(head_sign, lat, lon):
           return FairState.GOING_TO_FAIR
       else:
           return FairState.UNCLEAR
+    if head_sign == DESTINY_HEAD_SIGN:
+      if lon < DESTINY_WESTERN_LINE:
+          return FairState.COMING_FROM_FAIR
+      elif lon > DESTINY_EASTERN_LINE:
+          return FairState.GOING_TO_FAIR
+      else:
+          return FairState.UNCLEAR
+    raise(f"I don't know how to handle the route {head_sign}")
 
 
 input_file = sys.argv[1]
@@ -40,9 +48,21 @@ current_fair_state = FairState.UNCLEAR
 
 df['retrieved_at'].dt.tz_localize('utc')
 
+def format_direction(route_name, direction):
+    if direction == FairState.GOING_TO_FAIR:
+        return "Fairgrounds-bound"
+    if route_name == HUB_HEAD_SIGN:
+        return "hub-bound"
+    if route_name == DESTINY_HEAD_SIGN:
+        return "Destiny USA-bound"
+    else:
+        raise(f"I don't know how to format direction {direction} and route {route_name}")
+
+
 def format_trip(start_time, end_time, bus_id, route_name, direction):
     difference = row["retrieved_at"] - fair_started_at
-    return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration: {difference})'
+    direction_formatted = format_direction(route_name, direction)
+    return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction_formatted} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration: {difference})'
 
 # I can't filter on the 901 bus here, because I need to know when a bus stops
 # being the 901 and break the trip there.
@@ -62,18 +82,18 @@ for name, group in df.groupby("id"):
             current_trip = this_trip
             last_fair_state = FairState.UNCLEAR
         # Here's where our special treatment of the state fair buses happens.
-        if this_trip["fs"] == HUB_HEAD_SIGN:
+        if this_trip["fs"] in [HUB_HEAD_SIGN, DESTINY_HEAD_SIGN]:
             current_fair_state = figure_fair_state(this_trip["fs"], float(row["lat"]), float(row["lon"]))
             if (
                 current_fair_state == FairState.COMING_FROM_FAIR
                 and last_fair_state == FairState.GOING_TO_FAIR
             ):
-                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], "fairgrounds-bound"))
+                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], last_fair_state))
             elif (
                 current_fair_state == FairState.GOING_TO_FAIR
                 and last_fair_state == FairState.COMING_FROM_FAIR
             ):
-                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], "hub-bound"))
+                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], last_fair_state))
             elif current_fair_state == FairState.UNCLEAR:
                 current_fair_state = last_fair_state
             if current_fair_state != last_fair_state:
