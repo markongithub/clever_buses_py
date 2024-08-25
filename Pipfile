@@ -7,6 +7,7 @@ name = "pypi"
 pandas = "*"
 gnureadline = "*"
 pyarrow = "*"
+black = "*"
 
 [dev-packages]
 black = "*"
