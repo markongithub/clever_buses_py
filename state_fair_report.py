@@ -1,11 +1,16 @@
 from enum import Enum
+
+import pytz
 import sys
 import pandas as pd
 
-EASTERN_LINE = -76.15868904560217
-WESTERN_LINE = -76.20110727999335
-STATE_FAIR_HEADSIGN = "901 State Fair - Hub"
-
+HUB_EASTERN_LINE = -76.15868904560217
+HUB_WESTERN_LINE = -76.20110727999335
+HUB_HEAD_SIGN = "901 State Fair - Hub"
+DESTINY_EASTERN_LINE =  -76.176634
+DESTINY_WESTERN_COORDS = (43.062043, HUB_WESTERN_LINE)
+DESTINY_HEAD_SIGN = "909 Destiny USA"
+LONG_BRANCH_HEAD_SIGN = "907 Long Branch Park"
 
 class FairState(Enum):
     GOING_TO_FAIR = 0
@@ -13,13 +18,14 @@ class FairState(Enum):
     UNCLEAR = 2
 
 
-def fair_state_from_lon(lon):
-    if lon < WESTERN_LINE:
-        return FairState.COMING_FROM_FAIR
-    elif lon > EASTERN_LINE:
-        return FairState.GOING_TO_FAIR
-    else:
-        return FairState.UNCLEAR
+def figure_fair_state(head_sign, lat, lon):
+    if head_sign == HUB_HEAD_SIGN:
+      if lon < HUB_WESTERN_LINE:
+          return FairState.COMING_FROM_FAIR
+      elif lon > HUB_EASTERN_LINE:
+          return FairState.GOING_TO_FAIR
+      else:
+          return FairState.UNCLEAR
 
 
 input_file = sys.argv[1]
@@ -31,6 +37,13 @@ last_timestamp = None
 output_trips = []
 current_fair_state = FairState.UNCLEAR
 
+
+df['retrieved_at'].dt.tz_localize('utc')
+
+def format_trip(start_time, end_time, bus_id, route_name, direction):
+    difference = row["retrieved_at"] - fair_started_at
+    return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration: {difference})'
+
 # I can't filter on the 901 bus here, because I need to know when a bus stops
 # being the 901 and break the trip there.
 for name, group in df.groupby("id"):
@@ -39,34 +52,28 @@ for name, group in df.groupby("id"):
         # think is the unique ID of a trip.
         this_trip = {k: row[k] for k in ["fs", "id"]}
         this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
-        print(
-            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}'
-        )
+#        print(
+#            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}'
+#        )
         # When the head sign is "N/A", the dd changes a lot, so we have to ignore
         # those as unique trips.
         if current_trip != this_trip and this_trip["fs"] != "N/A":
-            print(f"Starting new trip: {this_trip}")
+#            print(f"Starting new trip: {this_trip}")
             current_trip = this_trip
             last_fair_state = FairState.UNCLEAR
         # Here's where our special treatment of the state fair buses happens.
-        if this_trip["fs"] == STATE_FAIR_HEADSIGN:
-            current_fair_state = fair_state_from_lon(float(row["lon"]))
+        if this_trip["fs"] == HUB_HEAD_SIGN:
+            current_fair_state = figure_fair_state(this_trip["fs"], float(row["lat"]), float(row["lon"]))
             if (
                 current_fair_state == FairState.COMING_FROM_FAIR
                 and last_fair_state == FairState.GOING_TO_FAIR
             ):
-                difference = row["retrieved_at"] - fair_started_at
-                print(
-                    f'{fair_started_at}: bus {row["id"]} begins a fairgrounds-bound trip on the {row["fs"]} route arriving {difference} later at {row["retrieved_at"]}'
-                )
+                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], "fairgrounds-bound"))
             elif (
                 current_fair_state == FairState.GOING_TO_FAIR
                 and last_fair_state == FairState.COMING_FROM_FAIR
             ):
-                difference = row["retrieved_at"] - fair_started_at
-                print(
-                    f'{fair_started_at}: bus {row["id"]} leaves the fairgrounds on the {row["fs"]} route arriving {difference} later at {row["retrieved_at"]}'
-                )
+                print(format_trip(fair_started_at, row["retrieved_at"], row["id"], row["fs"], "hub-bound"))
             elif current_fair_state == FairState.UNCLEAR:
                 current_fair_state = last_fair_state
             if current_fair_state != last_fair_state:

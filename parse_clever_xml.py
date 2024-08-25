@@ -1,7 +1,7 @@
 import os
 import re
 import sys
-from xml.etree.ElementTree import parse
+from xml.etree.ElementTree import parse, ParseError
 from collections import defaultdict
 import pandas as pd
 from datetime import datetime
@@ -31,7 +31,7 @@ def etree_to_dict(t):
     return d
 
 example_file = './buses2022-03-01T01:30:04.xml'
-relevant_keys = ['id', 'lat', 'lon', 'fs']
+relevant_keys = ['fs', 'dd', 'pid', 'run', 'bid', 'id', 'lat', 'lon']
 
 def time_from_filename(filename):
   date_str = re.search('buses(.+)\.xml', filename).group(1)
@@ -56,8 +56,15 @@ def read_parquet_if_exists(filename):
 
 old_df = read_parquet_if_exists(sys.argv[1])
 rows = []
+skipped_files = 0
+processed_files = 0
 for bus_file in sys.argv[2:]:
-  rows += bus_dicts_from_file(bus_file)
+  try:
+    rows += bus_dicts_from_file(bus_file)
+    processed_files += 1
+  except ParseError:
+    print(f"{bus_file} seems bad. Skipping that one.")
+    skipped_files += 1
 new_df = pd.DataFrame(rows)
 final_df = pd.concat([old_df, new_df])
 old_df=pd.DataFrame()
@@ -71,3 +78,5 @@ print("Confirming that written file is readable...")
 del[[final_df]]
 gc.collect()
 is_parquet_valid = pd.read_parquet(sys.argv[1])
+
+print(f"{processed_files} processed, {skipped_files} skipped")

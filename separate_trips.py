@@ -23,7 +23,7 @@ for name, group in df.groupby('id'):
     this_trip = {k: row[k] for k in ['fs', 'dd', 'pid', 'run', 'bid', 'id']}
     this_coords = '{lat},{lon}'.format(lat=row['lat'][:7],lon=row['lon'][:7])
     print(f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}')
-    # print(row)
+    print(row)
     # When the head sign is "N/A", the dd changes a lot, so we have to ignore
     # those as unique trips.
     if current_trip != this_trip and this_trip['fs'] != 'N/A':
@@ -36,15 +36,9 @@ for name, group in df.groupby('id'):
         output_trip['start_coords'] = start_coords
         output_trip['final_coords'] = last_coords
         print(f'finished trip: {output_trip}')
-        output_trips.append(output_trip)
       current_trip = this_trip
       start_coords = this_coords
       started_at = row['retrieved_at']
     last_timestamp = row['retrieved_at']
     last_coords = this_coords
 
-print("Assembling final dataframe...")
-output_df = pd.DataFrame(output_trips)
-print("Writing final parquet file...")
-output_df.to_parquet(output_file)
-print("Success!")
