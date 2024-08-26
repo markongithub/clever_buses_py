@@ -11,6 +11,8 @@ DESTINY_EASTERN_LINE = -76.176634
 DESTINY_WESTERN_LINE = HUB_WESTERN_LINE
 DESTINY_HEAD_SIGN = "909 Destiny USA"
 LONG_BRANCH_HEAD_SIGN = "907 Long Branch Park"
+LONG_BRANCH_COORDS = (43.11092841942912, -76.26195936251607)
+LONG_BRANCH_EASTERN_LINE = -76.22599168015266
 
 
 class FairState(Enum):
@@ -34,7 +36,15 @@ def figure_fair_state(head_sign, lat, lon):
             return FairState.GOING_TO_FAIR
         else:
             return FairState.UNCLEAR
-    raise (f"I don't know how to handle the route {head_sign}")
+    if head_sign == LONG_BRANCH_HEAD_SIGN:
+        if lon > LONG_BRANCH_EASTERN_LINE:
+            return FairState.COMING_FROM_FAIR
+        # if you're north AND east of LONG_BRANCH_COORDS, you've reached the Long Branch Park terminus
+        elif lat > LONG_BRANCH_COORDS[0] and lon > LONG_BRANCH_COORDS[1]:
+            return FairState.GOING_TO_FAIR
+        else:
+            return FairState.UNCLEAR
+    raise(Exception(f"I don't know how to handle the route {head_sign}"))
 
 
 input_file = sys.argv[1]
@@ -57,10 +67,12 @@ def format_direction(route_name, direction):
         return "hub-bound"
     if route_name == DESTINY_HEAD_SIGN:
         return "Destiny USA-bound"
+    if route_name == LONG_BRANCH_HEAD_SIGN:
+        return "Long Branch Park-bound"
     else:
-        raise (
+        raise(Exception(
             f"I don't know how to format direction {direction} and route {route_name}"
-        )
+        ))
 
 
 def format_duration(tdelta):
@@ -97,7 +109,7 @@ for name, group in df.groupby("id"):
             current_trip = this_trip
             last_fair_state = FairState.UNCLEAR
         # Here's where our special treatment of the state fair buses happens.
-        if this_trip["fs"] in [HUB_HEAD_SIGN, DESTINY_HEAD_SIGN]:
+        if this_trip["fs"] in [HUB_HEAD_SIGN, DESTINY_HEAD_SIGN, LONG_BRANCH_HEAD_SIGN]:
             current_fair_state = figure_fair_state(
                 this_trip["fs"], float(row["lat"]), float(row["lon"])
             )
