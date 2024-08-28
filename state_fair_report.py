@@ -114,21 +114,9 @@ for name, group in df.groupby("id"):
                 this_trip["fs"], float(row["lat"]), float(row["lon"])
             )
             if (
-                current_fair_state == FairState.COMING_FROM_FAIR
-                and last_fair_state == FairState.GOING_TO_FAIR
-            ):
-                print(
-                    format_trip(
-                        fair_started_at,
-                        row["retrieved_at"],
-                        row["id"],
-                        row["fs"],
-                        last_fair_state,
-                    )
-                )
-            elif (
-                current_fair_state == FairState.GOING_TO_FAIR
-                and last_fair_state == FairState.COMING_FROM_FAIR
+                current_fair_state != last_fair_state
+                and current_fair_state != FairState.UNCLEAR
+                and last_fair_state != FairState.UNCLEAR
             ):
                 print(
                     format_trip(
