@@ -86,7 +86,7 @@ def format_duration(tdelta):
 
 
 def format_trip(start_time, end_time, bus_id, route_name, direction):
-    difference = row["retrieved_at"] - fair_started_at
+    difference = end_time - start_time
     direction_formatted = format_direction(route_name, direction)
     return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction_formatted} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration {format_duration(difference)})'
 
