@@ -31,7 +31,7 @@ def etree_to_dict(t):
 
 
 example_file = "./buses2022-03-01T01:30:04.xml"
-relevant_keys = ["fs", "dd", "pid", "run", "bid", "id", "lat", "lon"]
+relevant_keys = ["fs", "dd", "pid", "run", "bid", "id", "lat", "lon", "rt", "op"]
 
 
 def time_from_filename(filename):

@@ -44,7 +44,7 @@ def figure_fair_state(head_sign, lat, lon):
             return FairState.GOING_TO_FAIR
         else:
             return FairState.UNCLEAR
-    raise(Exception(f"I don't know how to handle the route {head_sign}"))
+    raise (Exception(f"I don't know how to handle the route {head_sign}"))
 
 
 input_file = sys.argv[1]
@@ -70,9 +70,11 @@ def format_direction(route_name, direction):
     if route_name == LONG_BRANCH_HEAD_SIGN:
         return "Long Branch Park-bound"
     else:
-        raise(Exception(
-            f"I don't know how to format direction {direction} and route {route_name}"
-        ))
+        raise (
+            Exception(
+                f"I don't know how to format direction {direction} and route {route_name}"
+            )
+        )
 
 
 def format_duration(tdelta):
@@ -94,25 +96,33 @@ def format_trip(start_time, end_time, bus_id, route_name, direction):
 # I can't filter on the 901 bus here, because I need to know when a bus stops
 # being the 901 and break the trip there.
 for name, group in df.groupby("id"):
+    last_assumed_head_sign = None
     for _, row in group.iterrows():
-        # Both op and rt seem to get reset randomly. These elements form what I
-        # think is the unique ID of a trip.
-        this_trip = {k: row[k] for k in ["fs", "id"]}
+        # print(f"row: {row}")
+        # The head sign seems to turn to "N/A" at random times, while the bus continues on its route,
+        # so when we see N/A let's assume we're still on the last one.
+        if row["fs"] == "N/A":
+            assumed_head_sign = last_assumed_head_sign
+        else:
+            assumed_head_sign = row["fs"]
+        this_trip = {"fs": assumed_head_sign, "id": row["id"]}
         this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
-        #        print(
-        #            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}'
-        #        )
-        # When the head sign is "N/A", the dd changes a lot, so we have to ignore
-        # those as unique trips.
-        if current_trip != this_trip and this_trip["fs"] != "N/A":
-            #            print(f"Starting new trip: {this_trip}")
+        # print(
+        #    f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
+        # )
+        if current_trip != this_trip:
             current_trip = this_trip
             last_fair_state = FairState.UNCLEAR
         # Here's where our special treatment of the state fair buses happens.
-        if this_trip["fs"] in [HUB_HEAD_SIGN, DESTINY_HEAD_SIGN, LONG_BRANCH_HEAD_SIGN]:
+        if assumed_head_sign in [
+            HUB_HEAD_SIGN,
+            DESTINY_HEAD_SIGN,
+            LONG_BRANCH_HEAD_SIGN,
+        ]:
             current_fair_state = figure_fair_state(
-                this_trip["fs"], float(row["lat"]), float(row["lon"])
+                assumed_head_sign, float(row["lat"]), float(row["lon"])
             )
+            # print(f"current_fair_state is now {current_fair_state}")
             if (
                 current_fair_state != last_fair_state
                 and current_fair_state != FairState.UNCLEAR
@@ -123,7 +133,7 @@ for name, group in df.groupby("id"):
                         fair_started_at,
                         row["retrieved_at"],
                         row["id"],
-                        row["fs"],
+                        assumed_head_sign,
                         last_fair_state,
                     )
                 )
@@ -135,3 +145,4 @@ for name, group in df.groupby("id"):
         last_timestamp = row["retrieved_at"]
         last_coords = this_coords
         last_fair_state = current_fair_state
+        last_assumed_head_sign = assumed_head_sign
