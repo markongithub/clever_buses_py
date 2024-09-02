@@ -82,20 +82,15 @@ def format_trip(start_time, end_time, bus_id, route_name, direction):
 
 input_file = sys.argv[1]
 df = pd.read_parquet(input_file)
-
-current_trip = None
-started_at = None
-last_timestamp = None
-output_trips = []
-current_fair_state = FairState.UNCLEAR
-
-
 df["retrieved_at"].dt.tz_localize("utc")
-
 
 # I can't filter on the 901 bus here, because I need to know when a bus stops
 # being the 901 and break the trip there.
 for name, group in df.groupby("id"):
+    current_trip = None
+    started_at = None
+    last_timestamp = None
+    current_fair_state = FairState.UNCLEAR
     last_assumed_head_sign = None
     for _, row in group.iterrows():
         # print(f"row: {row}")
