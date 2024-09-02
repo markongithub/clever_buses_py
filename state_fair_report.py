@@ -164,6 +164,11 @@ def separate_trips(df):
     return output_trips
 
 
-input_file = sys.argv[1]
-df = pd.read_parquet(input_file)
-separate_trips(df)
+def main():
+    input_file = sys.argv[1]
+    df = pd.read_parquet(input_file)
+    separate_trips(df)
+
+
+if __name__ == "__main__":
+    main()
