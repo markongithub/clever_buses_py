@@ -47,19 +47,6 @@ def figure_fair_state(head_sign, lat, lon):
     raise (Exception(f"I don't know how to handle the route {head_sign}"))
 
 
-input_file = sys.argv[1]
-df = pd.read_parquet(input_file)
-
-current_trip = None
-started_at = None
-last_timestamp = None
-output_trips = []
-current_fair_state = FairState.UNCLEAR
-
-
-df["retrieved_at"].dt.tz_localize("utc")
-
-
 def format_direction(route_name, direction):
     if direction == FairState.GOING_TO_FAIR:
         return "Fairgrounds-bound"
@@ -91,6 +78,19 @@ def format_trip(start_time, end_time, bus_id, route_name, direction):
     difference = end_time - start_time
     direction_formatted = format_direction(route_name, direction)
     return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction_formatted} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration {format_duration(difference)})'
+
+
+input_file = sys.argv[1]
+df = pd.read_parquet(input_file)
+
+current_trip = None
+started_at = None
+last_timestamp = None
+output_trips = []
+current_fair_state = FairState.UNCLEAR
+
+
+df["retrieved_at"].dt.tz_localize("utc")
 
 
 # I can't filter on the 901 bus here, because I need to know when a bus stops
