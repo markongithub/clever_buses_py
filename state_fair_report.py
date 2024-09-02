@@ -74,10 +74,9 @@ def format_duration(tdelta):
         return hmmss
 
 
-def format_trip(start_time, end_time, bus_id, route_name, direction):
-    difference = end_time - start_time
-    direction_formatted = format_direction(route_name, direction)
-    return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction_formatted} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration {format_duration(difference)})'
+def format_trip(trip):
+    difference = trip["end_time"] - trip["start_time"]
+    return f'{trip["start_time"].tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {trip["bus_id"]} begins a {trip["direction"]} trip on the {trip["route_name"]} route arriving at {trip["end_time"].tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration {format_duration(difference)})'
 
 
 def trip_dict(start_time, end_time, bus_id, route_name, direction):
@@ -133,15 +132,6 @@ def separate_trips(df):
                     and current_fair_state != FairState.UNCLEAR
                     and last_fair_state != FairState.UNCLEAR
                 ):
-                    print(
-                        format_trip(
-                            fair_started_at,
-                            row["retrieved_at"],
-                            row["id"],
-                            assumed_head_sign,
-                            last_fair_state,
-                        )
-                    )
                     # should this be a generator?
                     output_trips.append(
                         trip_dict(
@@ -164,10 +154,29 @@ def separate_trips(df):
     return output_trips
 
 
+def output_parquet(output_trips, output_filename):
+    new_df = pd.DataFrame(output_trips)
+    print("Writing out final parquet file...")
+    print(new_df.info())
+    new_df.to_parquet(output_filename)
+
+    print("Confirming that written file is readable...")
+    del [[new_df]]
+    is_parquet_valid = pd.read_parquet(output_filename)
+
+    print(f"{len(output_trips)} written to {output_filename}")
+
+
 def main():
     input_file = sys.argv[1]
     df = pd.read_parquet(input_file)
-    separate_trips(df)
+    output_trips = separate_trips(df)
+
+    if len(sys.argv) > 2:
+        output_parquet(output_trips, sys.argv[2])
+    else:
+        for trip in output_trips:
+            print(format_trip(trip))
 
 
 if __name__ == "__main__":
