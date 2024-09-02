@@ -80,64 +80,90 @@ def format_trip(start_time, end_time, bus_id, route_name, direction):
     return f'{start_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))}: bus {bus_id} begins a {direction_formatted} trip on the {route_name} route arriving at {end_time.tz_localize("utc").astimezone(pytz.timezone("US/Eastern"))} (duration {format_duration(difference)})'
 
 
+def trip_dict(start_time, end_time, bus_id, route_name, direction):
+    return {
+        "start_time": start_time,
+        "end_time": end_time,
+        "bus_id": bus_id,
+        "route_name": route_name,
+        "direction": format_direction(route_name, direction),
+    }
+
+
+def separate_trips(df):
+    output_trips = []
+    df["retrieved_at"].dt.tz_localize("utc")
+
+    # I can't filter on the 901 bus here, because I need to know when a bus stops
+    # being the 901 and break the trip there.
+    for name, group in df.groupby("id"):
+        current_trip = None
+        started_at = None
+        last_timestamp = None
+        current_fair_state = FairState.UNCLEAR
+        last_assumed_head_sign = None
+        for _, row in group.iterrows():
+            # print(f"row: {row}")
+            # The head sign seems to turn to "N/A" at random times, while the bus continues on its route,
+            # so when we see N/A let's assume we're still on the last one.
+            if row["fs"] == "N/A":
+                assumed_head_sign = last_assumed_head_sign
+            else:
+                assumed_head_sign = row["fs"]
+            this_trip = {"fs": assumed_head_sign, "id": row["id"]}
+            this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
+            # print(
+            #    f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
+            # )
+            if current_trip != this_trip:
+                current_trip = this_trip
+                last_fair_state = FairState.UNCLEAR
+            # Here's where our special treatment of the state fair buses happens.
+            if assumed_head_sign in [
+                HUB_HEAD_SIGN,
+                DESTINY_HEAD_SIGN,
+                LONG_BRANCH_HEAD_SIGN,
+            ]:
+                current_fair_state = figure_fair_state(
+                    assumed_head_sign, float(row["lat"]), float(row["lon"])
+                )
+                # print(f"current_fair_state is now {current_fair_state}")
+                if (
+                    current_fair_state != last_fair_state
+                    and current_fair_state != FairState.UNCLEAR
+                    and last_fair_state != FairState.UNCLEAR
+                ):
+                    print(
+                        format_trip(
+                            fair_started_at,
+                            row["retrieved_at"],
+                            row["id"],
+                            assumed_head_sign,
+                            last_fair_state,
+                        )
+                    )
+                    # should this be a generator?
+                    output_trips.append(
+                        trip_dict(
+                            fair_started_at,
+                            row["retrieved_at"],
+                            row["id"],
+                            assumed_head_sign,
+                            last_fair_state,
+                        )
+                    )
+                elif current_fair_state == FairState.UNCLEAR:
+                    current_fair_state = last_fair_state
+                if current_fair_state != last_fair_state:
+                    fair_started_at = row["retrieved_at"]
+
+            last_timestamp = row["retrieved_at"]
+            last_coords = this_coords
+            last_fair_state = current_fair_state
+            last_assumed_head_sign = assumed_head_sign
+    return output_trips
+
+
 input_file = sys.argv[1]
 df = pd.read_parquet(input_file)
-df["retrieved_at"].dt.tz_localize("utc")
-
-# I can't filter on the 901 bus here, because I need to know when a bus stops
-# being the 901 and break the trip there.
-for name, group in df.groupby("id"):
-    current_trip = None
-    started_at = None
-    last_timestamp = None
-    current_fair_state = FairState.UNCLEAR
-    last_assumed_head_sign = None
-    for _, row in group.iterrows():
-        # print(f"row: {row}")
-        # The head sign seems to turn to "N/A" at random times, while the bus continues on its route,
-        # so when we see N/A let's assume we're still on the last one.
-        if row["fs"] == "N/A":
-            assumed_head_sign = last_assumed_head_sign
-        else:
-            assumed_head_sign = row["fs"]
-        this_trip = {"fs": assumed_head_sign, "id": row["id"]}
-        this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
-        # print(
-        #    f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
-        # )
-        if current_trip != this_trip:
-            current_trip = this_trip
-            last_fair_state = FairState.UNCLEAR
-        # Here's where our special treatment of the state fair buses happens.
-        if assumed_head_sign in [
-            HUB_HEAD_SIGN,
-            DESTINY_HEAD_SIGN,
-            LONG_BRANCH_HEAD_SIGN,
-        ]:
-            current_fair_state = figure_fair_state(
-                assumed_head_sign, float(row["lat"]), float(row["lon"])
-            )
-            # print(f"current_fair_state is now {current_fair_state}")
-            if (
-                current_fair_state != last_fair_state
-                and current_fair_state != FairState.UNCLEAR
-                and last_fair_state != FairState.UNCLEAR
-            ):
-                print(
-                    format_trip(
-                        fair_started_at,
-                        row["retrieved_at"],
-                        row["id"],
-                        assumed_head_sign,
-                        last_fair_state,
-                    )
-                )
-            elif current_fair_state == FairState.UNCLEAR:
-                current_fair_state = last_fair_state
-            if current_fair_state != last_fair_state:
-                fair_started_at = row["retrieved_at"]
-
-        last_timestamp = row["retrieved_at"]
-        last_coords = this_coords
-        last_fair_state = current_fair_state
-        last_assumed_head_sign = assumed_head_sign
+separate_trips(df)
