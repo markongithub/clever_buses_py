@@ -97,7 +97,7 @@ def separate_trips(df):
     # being the 901 and break the trip there.
     for name, group in df.groupby("id"):
         current_trip = None
-        started_at = None
+        fair_started_at = None
         last_timestamp = None
         current_fair_state = FairState.UNCLEAR
         last_assumed_head_sign = None
@@ -117,6 +117,13 @@ def separate_trips(df):
             if current_trip != this_trip:
                 current_trip = this_trip
                 last_fair_state = FairState.UNCLEAR
+            if last_fair_state != FairState.UNCLEAR:
+                # it might be cleaner just to do this every morning at 6 AM, but 4 hours is a decent hack for now
+                current_trip_duration = row["retrieved_at"] - fair_started_at
+                if current_trip_duration > pd.Timedelta(hours=4):
+                    # This is probably a bus that was offline overnight and just came back online
+                    last_fair_state = FairState.UNCLEAR
+
             # Here's where our special treatment of the state fair buses happens.
             if assumed_head_sign in [
                 HUB_HEAD_SIGN,
