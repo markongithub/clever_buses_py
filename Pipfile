@@ -8,6 +8,8 @@ pandas = "*"
 gnureadline = "*"
 pyarrow = "*"
 black = "*"
+jupyter = "*"
+plotly-express = "*"
 
 [dev-packages]
 black = "*"
