@@ -21,7 +21,6 @@ def generate_wait_times_df(trips_df, early_bound, late_bound):
     for route_direction, group in trips_df.query(
         "start_time >= @early_bound and start_time <= @late_bound"
     ).groupby(["route_name", "direction"]):
-        print(route_direction)
         last_trip = timestamps[0]
         for _, row in group.iterrows():
             next_trip = row["start_time"]
