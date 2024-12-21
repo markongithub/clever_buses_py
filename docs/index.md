@@ -39,3 +39,13 @@ Not bad! It looks like there was some trouble on the first day but overall you c
 Now we see the delays a bit more clearly. But still, this is a pretty decent level of service.
 
 # How we did it
+
+As we said above, we started by scraping data from `bus-time.centro.org`. But that isn't nearly enough.
+
+Some transit agencies release data tagged with a trip ID you can correlate against a [GTFS](https://en.wikipedia.org/wiki/GTFS) timetable. Centro doesn't. It just releases a list of buses with their positions and a few other pieces of data. The really useful field is the headsign, which is something like "909 Destiny USA". However, even the 909 Destiny USA buses don't always have that set. Sometimes it changes to "N/A" and back again. It also doesn't say whether it's going to Destiny or to the fairgrounds. We have to guess all that.
+
+So we [go through every bus's position](https://github.com/markongithub/clever_buses_py/blob/whatever-this-is/state_fair_report.py) and look for State Fair buses. Then we watch for when a bus goes near one terminal, and wait for it to go near the other. When it's done both, we call that a completed trip. This is a very flawed system because the driver could have taken a break and left the bus parked for 20 minutes during that "trip".
+
+The biggest flaw in all of this is that the bus might not be sharing its GPS data at all, or it might have the headsign listed wrong. In that case, it won't show up at all in this report. So consider this report to err on the side of pessimism.
+
+Once we have all the trips, which we've uploaded here in CSV, we can figure out [how long you'd have to wait](https://github.com/markongithub/clever_buses_py/blob/whatever-this-is/calculate_wait_times.py) from every minute that the buses were operating.
