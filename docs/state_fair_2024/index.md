@@ -20,6 +20,8 @@ It makes sense that Destiny would have the most because it's the shortest route 
 
 But as a passenger you don't really care about the raw number of trips. You care about how long you had to wait, and how long the trip took. So here is a graph of wait times for each route and direction. (Skip further down to see how this was calculated.)
 
+In this and all the other graphs, you can click on the route labels to include or exclude particular routes.
+
 {% include plotly_export.html %}
 
 For example, the afternoon of August 27 I went to Destiny USA to get the 909 bus to the fair, in anticipation of the Blue Öyster Cult show.  A huge crowd of people was already waiting in the hot sun. Sure enough, when I zoom in on the afternoon of August 27 on that graph, I see exactly what I expected - a 37 minute gap between 3:58 and 4:35 PM. That's not great.
