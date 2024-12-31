@@ -1,5 +1,6 @@
 import sys
 import pandas as pd
+import nearest_stop
 
 # eastern line 43.05192154121249, -76.15868904560217
 # western line 43.06842055469995, -76.20110727999335
@@ -7,6 +8,7 @@ import pandas as pd
 input_file = sys.argv[1]
 output_file = sys.argv[2]
 df = pd.read_parquet(input_file)
+stop_index = nearest_stop.StopIndex(sys.argv[3])
 
 current_trip = None
 started_at = None
@@ -22,10 +24,15 @@ for name, group in df.groupby("id"):
         # think is the unique ID of a trip.
         this_trip = {k: row[k] for k in ["fs", "dd", "pid", "run", "bid", "id"]}
         this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
+        this_stop_maybe = stop_index.find_stop(float(row["lat"]), float(row["lon"]))
+        if this_stop_maybe:
+            stop_name = this_stop_maybe
+        else:
+            stop_name = "not near any known stop"
         print(
-            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords}'
+            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords} ({stop_name})'
         )
-        print(row)
+        # print(row)
         # When the head sign is "N/A", the dd changes a lot, so we have to ignore
         # those as unique trips.
         if current_trip != this_trip and this_trip["fs"] != "N/A":
