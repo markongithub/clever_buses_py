@@ -10,6 +10,7 @@ pyarrow = "*"
 black = "*"
 jupyter = "*"
 plotly-express = "*"
+sortedcontainers = "*"
 
 [dev-packages]
 black = "*"
