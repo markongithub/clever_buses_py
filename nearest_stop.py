@@ -23,8 +23,8 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 TEST_COORDS = (43.0614, -76.059)
-LAT_RADIUS = 0.005
-LON_RADIUS = 0.012
+DEFAULT_LAT_RADIUS = 0.005
+DEFAULT_LON_RADIUS = 0.012
 
 
 def get_stop_lat(row):
@@ -36,10 +36,17 @@ def get_stop_lon(row):
 
 
 class StopIndex:
-    def __init__(self, stops_csv_path):
+    def __init__(
+        self,
+        stops_csv_path,
+        lat_radius=DEFAULT_LAT_RADIUS,
+        lon_radius=DEFAULT_LON_RADIUS,
+    ):
         self.lat_index = SortedList([], key=get_stop_lat)
         for _, row in pd.read_csv(stops_csv_path).iterrows():
             self.lat_index.add(row)
+        self.lat_radius = lat_radius
+        self.lon_radius = lon_radius
 
     @lru_cache
     def find_stop(self, lat, lon):
@@ -48,11 +55,11 @@ class StopIndex:
         stops_checked = 0
         stops_checked_haversine = 0
         for stop in self.lat_index.irange(
-            minimum={"stop_lat": lat - LAT_RADIUS},
-            maximum={"stop_lat": lat + LAT_RADIUS},
+            minimum={"stop_lat": lat - self.lat_radius},
+            maximum={"stop_lat": lat + self.lat_radius},
         ):
             stops_checked += 1
-            if abs(stop["stop_lon"] - lon) <= LON_RADIUS:
+            if abs(stop["stop_lon"] - lon) <= self.lon_radius:
                 stops_checked_haversine += 1
                 distance = haversine(lat, lon, stop["stop_lat"], stop["stop_lon"])
                 # print(f"{stop['stop_name']} is {distance} away from my goal.")
