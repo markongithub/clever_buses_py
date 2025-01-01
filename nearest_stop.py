@@ -2,6 +2,7 @@ import sys
 import pandas as pd
 from sortedcontainers import SortedList
 from math import radians, cos, sin, asin, sqrt
+from functools import lru_cache
 
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -40,6 +41,7 @@ class StopIndex:
         for _, row in pd.read_csv(stops_csv_path).iterrows():
             self.lat_index.add(row)
 
+    @lru_cache
     def find_stop(self, lat, lon):
         best_distance = 99999
         best_stop = None

@@ -22,7 +22,7 @@ for name, group in df.groupby("id"):
     for _, row in group.iterrows():
         # Both op and rt seem to get reset randomly. These elements form what I
         # think is the unique ID of a trip.
-        this_trip = {k: row[k] for k in ["fs", "dd", "pid", "run", "bid", "id"]}
+        this_trip = {k: row.get(k) for k in ["fs", "dd", "pid", "run", "bid", "id", "rt"]}
         this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
         this_stop_maybe = stop_index.find_stop(float(row["lat"]), float(row["lon"]))
         if this_stop_maybe:
@@ -30,7 +30,7 @@ for name, group in df.groupby("id"):
         else:
             stop_name = "not near any known stop"
         print(
-            f'{row["retrieved_at"]}: bus {row["id"]} was seen with head sign {row["fs"]} at {this_coords} ({stop_name})'
+            f'{row["retrieved_at"]}: bus {row["id"]} was seen with route {row.get("rt")} head sign {row["fs"]} at {this_coords} ({stop_name})'
         )
         # print(row)
         # When the head sign is "N/A", the dd changes a lot, so we have to ignore
