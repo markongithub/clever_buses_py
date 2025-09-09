@@ -111,9 +111,9 @@ def separate_trips(df):
                 assumed_head_sign = row["fs"]
             this_trip = {"fs": assumed_head_sign, "id": row["id"]}
             this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
-            # print(
-            #    f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
-            # )
+            print(
+               f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
+            )
             if current_trip != this_trip:
                 current_trip = this_trip
                 last_fair_state = FairState.UNCLEAR
