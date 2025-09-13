@@ -107,12 +107,17 @@ def separate_trips(df):
             # so when we see N/A let's assume we're still on the last one.
             if row["fs"] == "N/A":
                 assumed_head_sign = last_assumed_head_sign
+                if assumed_head_sign:
+                  output_head_sign = f"N/A (which I am treating as {assumed_head_sign})"
+                else:
+                  output_head_sign = row["fs"]
             else:
                 assumed_head_sign = row["fs"]
+                output_head_sign = row["fs"]
             this_trip = {"fs": assumed_head_sign, "id": row["id"]}
             this_coords = "{lat},{lon}".format(lat=row["lat"][:7], lon=row["lon"][:7])
             print(
-               f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {row['fs']} at {this_coords}"
+               f"{row['retrieved_at']}: bus {row['id']} was seen with rt {row['rt']} and head sign {output_head_sign} at {this_coords}"
             )
             if current_trip != this_trip:
                 current_trip = this_trip
