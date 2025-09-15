@@ -62,6 +62,7 @@ old_df = read_parquet_if_exists(sys.argv[1])
 rows = []
 skipped_files = 0
 processed_files = 0
+print(f"I'm hoping to process {len(sys.argv[2:])} files...")
 for bus_file in sys.argv[2:]:
     try:
         rows += bus_dicts_from_file(bus_file)

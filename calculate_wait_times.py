@@ -36,6 +36,28 @@ def generate_wait_times_df(trips_df, early_bound, late_bound):
     return output
 
 
+def generate_counts_df(trips_df, early_bound, late_bound):
+    # I wrote this but never used it because I decided it's smarter to go back
+    # to the non-tripped bus data.
+    timestamps = pd.date_range(early_bound, late_bound, freq="1min")
+
+    rows = []
+    all_routes = trips_df["route_name"].unique()
+    for route in all_routes:
+        for timestamp in timestamps:
+            current_count = trips_df.query(
+                "route_name = @route and start_time >= @timestamp and end_time < @timestamp"
+            ).count()
+            new_row = {
+                "route": route,
+                "time": timestamp,
+                "current_count": current_count,
+            }
+            rows.append(new_row)
+    output = pd.DataFrame(rows)
+    return output
+
+
 def main():
     df = pd.read_parquet(sys.argv[1])
 
