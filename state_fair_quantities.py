@@ -7,7 +7,13 @@ import pandas as pd
 HUB_HEAD_SIGN = "901 State Fair - Hub"
 DESTINY_HEAD_SIGN = "909 Destiny USA"
 LONG_BRANCH_HEAD_SIGN = "907 Long Branch Park"
-ALL_HEAD_SIGNS = [HUB_HEAD_SIGN, DESTINY_HEAD_SIGN, LONG_BRANCH_HEAD_SIGN]
+ORANGE_LOT_HEAD_SIGN = "582 Orange Lot"
+ALL_HEAD_SIGNS = [
+    HUB_HEAD_SIGN,
+    DESTINY_HEAD_SIGN,
+    LONG_BRANCH_HEAD_SIGN,
+    "582 Orange Lot",
+]
 input_file = sys.argv[1]
 output_file = sys.argv[2]
 df = pd.read_parquet(input_file)
@@ -76,4 +82,4 @@ for retrieved_at, group in df.groupby("retrieved_at"):
 
 output = pd.DataFrame(rows)
 print(output)  # This will only be a summary with sample rows
-output.to_parquet(output_file)
+output.to_csv(output_file, index=False)
