@@ -32,11 +32,11 @@ New this year, here are the numbers of buses per route that were reporting their
 
 On the second Sunday of the fair, at the start of the aforementioned En Vogue concert, the fair posted this notice on Facebook:
 
-![a Facebook post by the official New York State Fair account warning that parking lots are full and recommending the bus](/assets/2025/facebook_lots_full.png)
+![a Facebook post by the official New York State Fair account warning that parking lots are full and recommending the bus](/clever_buses_py/assets/2025/facebook_lots_full.png)
 
 We can zoom in on that time in our graph and see how the buses were doing. Let's only look at Fairgrounds-bound buses for now:
 
-![wait times for Fairgrounds-bound buses around 6 PM Eastern on August 31, 2025](/assets/2025/wait_times_20250831_6PM.png)
+![wait times for Fairgrounds-bound buses around 6 PM Eastern on August 31, 2025](/clever_buses_py/assets/2025/wait_times_20250831_6PM.png)
 
 The Destiny buses look solid but there was a full half-hour wait at the downtown hub. Looking at the "bus counts" graph, we see that there were only two buses running the downtown hub route at the time. That's a clear opportunity for improvement in service.
 
