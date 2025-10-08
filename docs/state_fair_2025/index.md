@@ -2,7 +2,7 @@
 
 Did you enjoy the 2025 Great New York State Fair? We did. We saw En Vogue perform "Whatta Man" on the same stage where we saw Salt N' Pepa perform "Whatta Man" two years ago. We watched other people eat the Pebble Pop. We thought the Dubai cream puff in the Dairy Building was not really worth the hype, but the regular vanilla one was solid.
 
-This report is mostly the same as [../state_fair_2024](our report on 2024) and that page has more detail on what we did and how.
+This report is mostly the same as [our report on 2024](../state_fair_2024) and that page has more detail on what we did and how.
 
 One big caveat is that we had data outages twice during the State Fair, on the mornings of August 30 and September 1. For those days you won't see any bus data before 11 AM Eastern.
 
@@ -10,7 +10,7 @@ Here is a list of all the State Fair bus trips we identified.
 
 {% include 2025/dataframe_export.html %}
 
-We also have [https://github.com/markongithub/clever_buses_py/blob/main/output/trips_2025.csv](that same list in CSV format).
+We also have [that same list in CSV format](https://github.com/markongithub/clever_buses_py/blob/main/output/trips_2025.csv).
 
 So what did that mean for the rider? Here's a graph of how much time elapsed between trips for each route and direction. In this and all the other graphs, you can click on the route labels to include or exclude particular routes. You can also zoom in on a particular time period and then double-click to zoom out.
 
@@ -40,6 +40,6 @@ We can zoom in on that time in our graph and see how the buses were doing. Let's
 
 The Destiny buses look solid but there was a full half-hour wait at the downtown hub. Looking at the "bus counts" graph, we see that there were only two buses running the downtown hub route at the time. That's a clear opportunity for improvement in service.
 
-That's the report! We think it demonstrates a valuable service with room for improvement. [https://github.com/markongithub/clever_buses_py/blob/main/output/](Most of our findings are in CSV format) so play with the data yourself and let us know what else you find.
+That's the report! We think it demonstrates a valuable service with room for improvement. [Most of our findings are in CSV format](https://github.com/markongithub/clever_buses_py/blob/main/output/) so play with the data yourself and let us know what else you find.
 
 See you next year at the Fair!
