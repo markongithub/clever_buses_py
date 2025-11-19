@@ -50,7 +50,9 @@ def build_scheduled_datetimes(stop_times_df, date, tzname=None):
         ).dt.tz_convert("UTC")
     else:
         # treat date as naive local time and make resulting datetimes timezone-aware UTC
-        stop_times_df["arrival_dt"] = (base + pd.to_timedelta(secs, unit="s")).dt.tz_localize("UTC")
+        stop_times_df["arrival_dt"] = (
+            base + pd.to_timedelta(secs, unit="s")
+        ).dt.tz_localize("UTC")
     return stop_times_df
 
 
@@ -96,16 +98,112 @@ def correlate(
     stop_times = pd.read_csv(stop_times_path, dtype=str)
     trips = pd.read_csv(trips_path, dtype=str)
 
+    # --- START: filter trips by active service_id using calendar / calendar_dates ---
+    target_date = pd.to_datetime(date).date()
+
+    calendar_path = os.path.join(gtfs_dir, "calendar.txt")
+    calendar_dates_path = os.path.join(gtfs_dir, "calendar_dates.txt")
+
+    calendar_found = False
+    calendar_dates_found = False
+    active_services = set()
+
+    if os.path.exists(calendar_path):
+        calendar_found = True
+        cal = pd.read_csv(calendar_path, dtype=str).rename(columns=lambda c: c.strip())
+        if {"service_id", "start_date", "end_date"}.issubset(cal.columns):
+            cal["start_date"] = pd.to_datetime(
+                cal["start_date"], format="%Y%m%d", errors="coerce"
+            ).dt.date
+            cal["end_date"] = pd.to_datetime(
+                cal["end_date"], format="%Y%m%d", errors="coerce"
+            ).dt.date
+            weekday_cols = [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ]
+            weekday_col = weekday_cols[target_date.weekday()]
+            if weekday_col in cal.columns:
+                mask = (
+                    cal["start_date"].notna()
+                    & cal["end_date"].notna()
+                    & (cal["start_date"] <= target_date)
+                    & (cal["end_date"] >= target_date)
+                    & (cal[weekday_col].astype(str).str.strip() == "1")
+                )
+                active_services.update(cal.loc[mask, "service_id"].astype(str).tolist())
+        else:
+            print("calendar.txt present but missing required columns; ignoring.")
+    if os.path.exists(calendar_dates_path):
+        calendar_dates_found = True
+        cdates = pd.read_csv(calendar_dates_path, dtype=str).rename(
+            columns=lambda c: c.strip()
+        )
+        if {"service_id", "date", "exception_type"}.issubset(cdates.columns):
+            cdates["date_parsed"] = pd.to_datetime(
+                cdates["date"], format="%Y%m%d", errors="coerce"
+            ).dt.date
+            adds = (
+                cdates.loc[
+                    (cdates["date_parsed"] == target_date)
+                    & (cdates["exception_type"].astype(str).str.strip() == "1"),
+                    "service_id",
+                ]
+                .astype(str)
+                .tolist()
+            )
+            removes = (
+                cdates.loc[
+                    (cdates["date_parsed"] == target_date)
+                    & (cdates["exception_type"].astype(str).str.strip() == "2"),
+                    "service_id",
+                ]
+                .astype(str)
+                .tolist()
+            )
+            active_services.update(adds)
+            active_services.difference_update(removes)
+        else:
+            print("calendar_dates.txt present but missing required columns; ignoring.")
+
+    if calendar_found or calendar_dates_found:
+        print(f"Active services: {active_services}")
+        if "service_id" in trips.columns:
+            trips_before = len(trips)
+            trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
+            print(
+                f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
+            )
+            debug_service_ids = trips["service_id"].unique().tolist()
+            print(f"Service IDs now in trips: {debug_service_ids}")
+        else:
+            print(
+                "Calendar files found but trips.txt has no service_id; skipping service filtering."
+            )
+    else:
+        print("No calendar/calendar_dates found; not filtering trips by service date.")
+    # --- END: calendar filtering ---
+
     # try to read agency timezone
     agency_tz = None
     agency_path = os.path.join(gtfs_dir, "agency.txt")
     if os.path.exists(agency_path):
         agency = pd.read_csv(agency_path, dtype=str)
-        if "agency_timezone" in agency.columns and not agency["agency_timezone"].dropna().empty:
+        if (
+            "agency_timezone" in agency.columns
+            and not agency["agency_timezone"].dropna().empty
+        ):
             agency_tz = agency["agency_timezone"].dropna().iloc[0]
             print(f"Using GTFS agency timezone: {agency_tz}")
         else:
-            print("agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times.")
+            print(
+                "agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times."
+            )
     else:
         print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
 
@@ -119,7 +217,9 @@ def correlate(
     stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
 
     # join stop_times -> trips to get route_id / trip_headsign if available
-    merged = stop_times.merge(trips, on="trip_id", how="left", suffixes=("", "_trip"))
+    print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
+    merged = stop_times.merge(trips, on="trip_id", how="inner", suffixes=("", "_trip"))
+    print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
 
     # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
     date_ts = pd.Timestamp(date)  # keep as naive local date
@@ -131,6 +231,7 @@ def correlate(
     rows = []
     window = pd.Timedelta(minutes=time_window_minutes)
     # iterate rows (if very large, sample or optimize later)
+    print(f"Service IDs now in trips: {debug_service_ids}")
     for _, r in buses.iterrows():
         lat = float(r.get("lat", np.nan))
         lon = float(r.get("lon", np.nan))
