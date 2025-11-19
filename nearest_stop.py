@@ -49,31 +49,34 @@ class StopIndex:
         self.lon_radius = lon_radius
 
     @lru_cache
-    def find_stop(self, lat, lon):
-        best_distance = 99999
-        best_stop = None
+    def find_candidates(self, lat, lon, limit_set=None):
         stops_checked = 0
         stops_checked_haversine = 0
-        for stop in self.lat_index.irange(
+        candidates = []
+
+        latitude_candidates = self.lat_index.irange(
             minimum={"stop_lat": lat - self.lat_radius},
             maximum={"stop_lat": lat + self.lat_radius},
-        ):
+        )
+        for stop in latitude_candidates:
+            if limit_set and str(stop["stop_id"]) not in limit_set:
+                # print(f"{stop['stop_id']} is not in {limit_set}")
+                continue
             stops_checked += 1
             if abs(stop["stop_lon"] - lon) <= self.lon_radius:
                 stops_checked_haversine += 1
                 distance = haversine(lat, lon, stop["stop_lat"], stop["stop_lon"])
                 # print(f"{stop['stop_name']} is {distance} away from my goal.")
-                if best_stop is None or distance < best_distance:
-                    best_distance = distance
-                    best_stop = stop["stop_name"]
-        # print(
-        #    f"We considered {stops_checked} stops and calculated {stops_checked_haversine} distances."
-        # )
-        # if best_stop:
-        #    print(f"Best guess for this stop: {best_stop}, {best_distance} km away.")
-        # else:
-        #    print("We didn't find any good candidates for this stop.")
-        return best_stop
+                stop["distance"] = distance
+                candidates.append(stop)
+        return sorted(candidates, key=lambda d: d["distance"])
+
+    @lru_cache
+    def find_stop(self, lat, lon, limit_set=None):
+        candidates = self.find_candidates(lat, lon, limit_set)
+        if candidates:
+            return candidates[0]
+        return None
 
 
 def main():

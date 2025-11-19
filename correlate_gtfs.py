@@ -42,6 +42,27 @@ def build_scheduled_datetimes(stop_times_df, date):
     return stop_times_df
 
 
+def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
+    """
+    Return a list of stop_ids used by trips whose trip_headsign equals `headsign` exactly.
+    Exact match is performed after trimming whitespace. Preserves first-seen order by trip_id and stop_sequence.
+    """
+    hs = trips_df["trip_headsign"]
+    mask = hs == headsign
+    if not mask.any():
+        return []
+
+    trip_ids = trips_df.loc[mask, "trip_id"].astype(str).unique().tolist()
+    if not trip_ids:
+        return []
+
+    st = stop_times_df[stop_times_df["trip_id"].isin(trip_ids)]
+    if st.empty:
+        return []
+
+    return st["stop_id"].unique().tolist()
+
+
 def correlate(
     buses_parquet, gtfs_zip, output_csv, date="2025-11-16", time_window_minutes=15
 ):
@@ -94,8 +115,11 @@ def correlate(
             continue
         if r.get("rt") != "SY20":
             continue
-        nearest = stop_index.find_stop(lat, lon)
-        # print(f"Nearest stop: {nearest}")
+        print(r.to_dict())
+        stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
+        print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
+        nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
+        print(f"Nearest stop: {nearest['stop_name']}")
         # StopIndex.find_stop in workspace returns a stop name / id in other code; try to preserve both cases
         stop_id = None
         # if nearest is a dict-like or string, attempt to get stop_id
