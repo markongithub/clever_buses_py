@@ -5,8 +5,10 @@ import pandas as pd
 from datetime import timedelta
 import numpy as np
 from nearest_stop import StopIndex
+from zoneinfo import ZoneInfo
 
 GTFS_FILES = [
+    "agency.txt",
     "stops.txt",
     "stop_times.txt",
     "trips.txt",
@@ -31,14 +33,24 @@ def parse_gtfs_time_to_seconds(t):
     return h * 3600 + m * 60 + s
 
 
-def build_scheduled_datetimes(stop_times_df, date):
-    # date is a pd.Timestamp (local date for schedule)
+def build_scheduled_datetimes(stop_times_df, date, tzname=None):
+    """
+    date is a pd.Timestamp (local date for schedule).
+    If tzname is provided (e.g. 'America/New_York'), localize schedule datetimes to that
+    timezone and convert to UTC (so results are comparable with UTC bus timestamps).
+    """
     secs = stop_times_df["arrival_time"].map(parse_gtfs_time_to_seconds)
-    # arrival_seconds may exceed 86400; convert to timedeltas and add to date
     stop_times_df = stop_times_df.copy()
-    stop_times_df["arrival_dt"] = pd.to_datetime(date.normalize()) + pd.to_timedelta(
-        secs, unit="s"
-    )
+    base = pd.to_datetime(date.normalize())
+    if tzname:
+        # localize to agency local tz then convert to UTC
+        local_tz = ZoneInfo(tzname)
+        stop_times_df["arrival_dt"] = (
+            base.tz_localize(local_tz) + pd.to_timedelta(secs, unit="s")
+        ).dt.tz_convert("UTC")
+    else:
+        # treat date as naive local time and make resulting datetimes timezone-aware UTC
+        stop_times_df["arrival_dt"] = (base + pd.to_timedelta(secs, unit="s")).dt.tz_localize("UTC")
     return stop_times_df
 
 
@@ -84,7 +96,19 @@ def correlate(
     stop_times = pd.read_csv(stop_times_path, dtype=str)
     trips = pd.read_csv(trips_path, dtype=str)
 
-    print("Loaded CSV files from GTFS zip...")
+    # try to read agency timezone
+    agency_tz = None
+    agency_path = os.path.join(gtfs_dir, "agency.txt")
+    if os.path.exists(agency_path):
+        agency = pd.read_csv(agency_path, dtype=str)
+        if "agency_timezone" in agency.columns and not agency["agency_timezone"].dropna().empty:
+            agency_tz = agency["agency_timezone"].dropna().iloc[0]
+            print(f"Using GTFS agency timezone: {agency_tz}")
+        else:
+            print("agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times.")
+    else:
+        print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
+
     # keep required columns (tolerant to missing optional fields)
     stop_times = stop_times.rename(columns=lambda c: c.strip())
     required_cols = ["trip_id", "arrival_time", "stop_id", "stop_sequence"]
@@ -97,9 +121,9 @@ def correlate(
     # join stop_times -> trips to get route_id / trip_headsign if available
     merged = stop_times.merge(trips, on="trip_id", how="left", suffixes=("", "_trip"))
 
-    # convert GTFS times to datetimes on the target date
-    date_ts = pd.Timestamp(date).tz_localize("UTC")
-    merged = build_scheduled_datetimes(merged, date_ts)
+    # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
+    date_ts = pd.Timestamp(date)  # keep as naive local date
+    merged = build_scheduled_datetimes(merged, date_ts, tzname=agency_tz)
 
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
@@ -155,7 +179,7 @@ def correlate(
             "lat": lat,
             "lon": lon,
             "nearest_stop_id": stop_id,
-            "nearest_stop_name": nearest,
+            "nearest_stop_name": nearest["stop_name"],
             "scheduled_trip_id": (
                 scheduled_match["trip_id"] if scheduled_match else None
             ),
