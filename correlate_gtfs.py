@@ -115,39 +115,28 @@ def correlate(
             continue
         if r.get("rt") != "SY20":
             continue
+        if r.get("id") != "2477":
+            continue
         print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
-        print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
+        # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
         print(f"Nearest stop: {nearest['stop_name']}")
-        # StopIndex.find_stop in workspace returns a stop name / id in other code; try to preserve both cases
-        stop_id = None
-        # if nearest is a dict-like or string, attempt to get stop_id
         if nearest is None:
             stop_id = None
-        elif isinstance(nearest, str):
-            # assume nearest is stop_id or stop_name; try to match stops.txt stop_id first
-            if nearest in stops["stop_id"].values:
-                stop_id = nearest
-            else:
-                # try match by stop_name
-                matches = stops.loc[stops["stop_name"] == nearest, "stop_id"]
-                stop_id = matches.iloc[0] if not matches.empty else None
         else:
-            # fallback: if the StopIndex returned something else, coerce to str
-            try:
-                stop_id = str(nearest)
-            except Exception:
-                stop_id = None
+            stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
         scheduled_match = None
         if stop_id:
-            candidates = merged.loc[merged["stop_id"] == stop_id].copy()
+            candidates = merged.loc[(merged["stop_id"] == stop_id)].copy()
+            print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
                 candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
                 within = candidates.loc[candidates["dt_abs"] <= window]
+                print(f"within: {within}")
                 if not within.empty:
                     best = within.loc[within["dt_abs"].idxmin()]
                     scheduled_match = {
