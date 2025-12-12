@@ -78,7 +78,7 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
 
 
 def correlate(
-    buses_parquet, gtfs_zip, output_csv, date="2025-11-16", time_window_minutes=15
+    buses_parquet, gtfs_dir, output_csv, date="2025-11-16", time_window_minutes=15
 ):
     # load buses
     buses = pd.read_parquet(buses_parquet)
@@ -88,8 +88,6 @@ def correlate(
     # ensure datetime64[ns, tz] or naive; normalize to UTC tz-aware for comparisons
     buses["retrieved_at"] = pd.to_datetime(buses["retrieved_at"], utc=True)
 
-    # extract and load GTFS
-    gtfs_dir = extract_gtfs_tables(gtfs_zip)
     stops_path = os.path.join(gtfs_dir, "stops.txt")
     stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
     trips_path = os.path.join(gtfs_dir, "trips.txt")
@@ -310,12 +308,12 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 4:
         print(
-            "usage: python correlate_gtfs.py <buses.parquet> <gtfs_zip> <out.csv> [date YYYY-MM-DD] [window_minutes]"
+            "usage: python correlate_gtfs.py <buses.parquet> <gtfs_dir> <out.csv> [date YYYY-MM-DD] [window_minutes]"
         )
         sys.exit(1)
     buses_parquet = sys.argv[1]
-    gtfs_zip = sys.argv[2]
+    gtfs_dir = sys.argv[2]
     out_csv = sys.argv[3]
     date = sys.argv[4] if len(sys.argv) > 4 else "2025-11-16"
     window = int(sys.argv[5]) if len(sys.argv) > 5 else 15
-    correlate(buses_parquet, gtfs_zip, out_csv, date=date, time_window_minutes=window)
+    correlate(buses_parquet, gtfs_dir, out_csv, date=date, time_window_minutes=window)
