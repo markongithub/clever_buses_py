@@ -77,9 +77,7 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
     return st["stop_id"].unique().tolist()
 
 
-def correlate(
-    buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15
-):
+def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15):
     # load buses
     buses = pd.read_parquet(buses_parquet)
     print("read input parquet file...")
@@ -238,22 +236,25 @@ def correlate(
             continue
         if r.get("rt") != "SY20":
             continue
-        if r.get("id") != "2477":
-            continue
+        # if r.get("id") != "2481":
+        #    continue
         print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
-        print(f"Nearest stop: {nearest['stop_name']}")
         if nearest is None:
-            stop_id = None
+            print(f"No scheduled stop on any {r['fs']} trip is near ({lat},{lon})")
+            continue
         else:
+            print(f"Nearest stop: {nearest['stop_name']}")
             stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
         scheduled_match = None
         if stop_id:
-            candidates = merged.loc[(merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])].copy()
+            candidates = merged.loc[
+                (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
+            ].copy()
             print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
