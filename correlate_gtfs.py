@@ -253,7 +253,7 @@ def correlate(
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
         scheduled_match = None
         if stop_id:
-            candidates = merged.loc[(merged["stop_id"] == stop_id)].copy()
+            candidates = merged.loc[(merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])].copy()
             print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
