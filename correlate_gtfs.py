@@ -78,7 +78,7 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
 
 
 def correlate(
-    buses_parquet, gtfs_dir, output_csv, date="2025-11-16", time_window_minutes=15
+    buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15
 ):
     # load buses
     buses = pd.read_parquet(buses_parquet)
@@ -314,6 +314,6 @@ if __name__ == "__main__":
     buses_parquet = sys.argv[1]
     gtfs_dir = sys.argv[2]
     out_csv = sys.argv[3]
-    date = sys.argv[4] if len(sys.argv) > 4 else "2025-11-16"
+    date = sys.argv[4]
     window = int(sys.argv[5]) if len(sys.argv) > 5 else 15
     correlate(buses_parquet, gtfs_dir, out_csv, date=date, time_window_minutes=window)
