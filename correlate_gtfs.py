@@ -226,7 +226,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
 
     rows = []
     window = pd.Timedelta(minutes=time_window_minutes)
-    # iterate rows (if very large, sample or optimize later)
+    # This sucks. It only works on one day at a time and would completely fail if a trip crossed midnight local time.
     print(f"Service IDs now in trips: {debug_service_ids}")
     for _, r in buses.iterrows():
         lat = float(r.get("lat", np.nan))
