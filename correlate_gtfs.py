@@ -216,7 +216,12 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
     merged = stop_times.merge(trips, on="trip_id", how="inner", suffixes=("", "_trip"))
     # This is just for debugging, remove it later
-    merged = merged.merge(stops[["stop_id", "stop_name"]], on="stop_id", how="inner", suffixes=("", "_trip"))
+    merged = merged.merge(
+        stops[["stop_id", "stop_name"]],
+        on="stop_id",
+        how="inner",
+        suffixes=("", "_trip"),
+    )
     # merged = merged.loc[merged["block_id"] == "268630"]
     merged = merged.loc[merged["route_id"] == "21337"]
     print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
@@ -244,7 +249,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        #if r.get("id") != "2481":
+        # if r.get("id") != "2481":
         #    continue
         if r.get("rt") != "SY20":
             continue
