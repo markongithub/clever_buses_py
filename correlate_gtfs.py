@@ -215,7 +215,10 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     # join stop_times -> trips to get route_id / trip_headsign if available
     print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
     merged = stop_times.merge(trips, on="trip_id", how="inner", suffixes=("", "_trip"))
-    merged = merged.loc[merged["block_id"] == "268630"]
+    # This is just for debugging, remove it later
+    merged = merged.merge(stops[["stop_id", "stop_name"]], on="stop_id", how="inner", suffixes=("", "_trip"))
+    # merged = merged.loc[merged["block_id"] == "268630"]
+    merged = merged.loc[merged["route_id"] == "21337"]
     print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
 
     # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
@@ -241,19 +244,19 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        if r.get("id") != "2481":
-            continue
+        #if r.get("id") != "2481":
+        #    continue
         if r.get("rt") != "SY20":
             continue
-        print(r.to_dict())
+        # print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
         if nearest is None:
-            print(f"No scheduled stop on any {r['fs']} trip is near ({lat},{lon})")
+            # print(f"No scheduled stop on any {r['fs']} trip is near ({lat},{lon})")
             continue
         else:
-            print(f"Nearest stop: {nearest['stop_name']}")
+            # print(f"Nearest stop: {nearest['stop_name']}")
             stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
@@ -262,12 +265,12 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             candidates = merged.loc[
                 (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
             ].copy()
-            print(f"Candidates: {candidates}")
+            # print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
                 candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
                 within = candidates.loc[candidates["dt_abs"] <= window]
-                print(f"within: {within}")
+                # print(f"within: {within}")
                 if not within.empty:
                     best_index = within["dt_abs"].idxmin()
                     best = within.loc[best_index]
