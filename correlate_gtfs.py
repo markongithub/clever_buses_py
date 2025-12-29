@@ -288,44 +288,16 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                         "scheduled_arrival": best["arrival_dt"],
                         "time_diff_s": int(best["dt_abs"].total_seconds()),
                     }
-                    # TODO: Don't overwrite these if we already saw the same bus at the same stop earlier.
-                    merged.at[best_index, "observed_at"] = retrieved_at
-                    merged.at[best_index, "bus_id"] = r["id"]
-                    merged.at[best_index, "lat"] = lat
-                    merged.at[best_index, "lon"] = lon
-                    merged.at[best_index, "time_diff_s"] = scheduled_match[
-                        "time_diff_s"
-                    ]
+                    # Only populate if we haven't already observed this scheduled stop
+                    if pd.isna(merged.at[best_index, "observed_at"]):
+                        merged.at[best_index, "observed_at"] = retrieved_at
+                        merged.at[best_index, "bus_id"] = r["id"]
+                        merged.at[best_index, "lat"] = lat
+                        merged.at[best_index, "lon"] = lon
+                        merged.at[best_index, "time_diff_s"] = scheduled_match[
+                            "time_diff_s"
+                        ]
 
-        new_row = {
-            "bus_id": r.get("id", r.get("bid", None)),
-            "retrieved_at": retrieved_at,
-            "lat": lat,
-            "lon": lon,
-            "nearest_stop_id": stop_id,
-            "nearest_stop_name": nearest["stop_name"],
-            "scheduled_trip_id": (
-                scheduled_match["trip_id"] if scheduled_match else None
-            ),
-            "bus_headsign": r["fs"],
-            "trip_headsign": (
-                scheduled_match["trip_headsign"] if scheduled_match else None
-            ),
-            "scheduled_route_id": (
-                scheduled_match["route_id"] if scheduled_match else None
-            ),
-            "scheduled_arrival": (
-                scheduled_match["scheduled_arrival"] if scheduled_match else None
-            ),
-            "time_diff_s": scheduled_match["time_diff_s"] if scheduled_match else None,
-        }
-        if scheduled_match:
-            print(f"New row: {new_row}")
-        rows.append(new_row)
-
-    out = pd.DataFrame(rows)
-    # out.to_csv(output_csv, index=False)
-    # print(f"Wrote {len(out)} correlated rows to {output_csv}")
     merged.to_csv(output_csv, index=False)
 
 
