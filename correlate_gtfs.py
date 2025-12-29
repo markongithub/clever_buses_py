@@ -215,15 +215,22 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     # join stop_times -> trips to get route_id / trip_headsign if available
     print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
     merged = stop_times.merge(trips, on="trip_id", how="inner", suffixes=("", "_trip"))
+    merged = merged.loc[merged["block_id"] == "268630"]
     print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
 
     # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
     date_ts = pd.Timestamp(date)  # keep as naive local date
     merged = build_scheduled_datetimes(merged, date_ts, tzname=agency_tz)
 
+    # add placeholder columns for observed data; they'll be populated later
+    merged["observed_at"] = pd.NaT
+    merged["bus_id"] = None
+    merged["lat"] = np.nan
+    merged["lon"] = np.nan
+    merged["time_diff_s"] = None
+
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
-
     rows = []
     window = pd.Timedelta(minutes=time_window_minutes)
     # This sucks. It only works on one day at a time and would completely fail if a trip crossed midnight local time.
@@ -234,10 +241,10 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
+        if r.get("id") != "2481":
+            continue
         if r.get("rt") != "SY20":
             continue
-        # if r.get("id") != "2481":
-        #    continue
         print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
@@ -262,7 +269,8 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                 within = candidates.loc[candidates["dt_abs"] <= window]
                 print(f"within: {within}")
                 if not within.empty:
-                    best = within.loc[within["dt_abs"].idxmin()]
+                    best_index = within["dt_abs"].idxmin()
+                    best = within.loc[best_index]
                     scheduled_match = {
                         "trip_id": best["trip_id"],
                         "route_id": best.get("route_id", ""),
@@ -272,6 +280,14 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                         "scheduled_arrival": best["arrival_dt"],
                         "time_diff_s": int(best["dt_abs"].total_seconds()),
                     }
+                    # TODO: Don't overwrite these if we already saw the same bus at the same stop earlier.
+                    merged.at[best_index, "observed_at"] = retrieved_at
+                    merged.at[best_index, "bus_id"] = r["id"]
+                    merged.at[best_index, "lat"] = lat
+                    merged.at[best_index, "lon"] = lon
+                    merged.at[best_index, "time_diff_s"] = scheduled_match[
+                        "time_diff_s"
+                    ]
 
         new_row = {
             "bus_id": r.get("id", r.get("bid", None)),
@@ -300,21 +316,50 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         rows.append(new_row)
 
     out = pd.DataFrame(rows)
-    out.to_csv(output_csv, index=False)
-    print(f"Wrote {len(out)} correlated rows to {output_csv}")
+    # out.to_csv(output_csv, index=False)
+    # print(f"Wrote {len(out)} correlated rows to {output_csv}")
+    merged.to_csv(output_csv, index=False)
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
 
-    if len(sys.argv) < 4:
-        print(
-            "usage: python correlate_gtfs.py <buses.parquet> <gtfs_dir> <out.csv> [date YYYY-MM-DD] [window_minutes]"
-        )
-        sys.exit(1)
-    buses_parquet = sys.argv[1]
-    gtfs_dir = sys.argv[2]
-    out_csv = sys.argv[3]
-    date = sys.argv[4]
-    window = int(sys.argv[5]) if len(sys.argv) > 5 else 15
-    correlate(buses_parquet, gtfs_dir, out_csv, date=date, time_window_minutes=window)
+    parser = argparse.ArgumentParser(
+        description="Correlate bus location data with GTFS scheduled stops"
+    )
+    parser.add_argument(
+        "--buses",
+        required=True,
+        help="Path to the buses parquet file",
+    )
+    parser.add_argument(
+        "--gtfs-dir",
+        required=True,
+        help="Path to the GTFS directory containing extracted GTFS files",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Path to the output CSV file",
+    )
+    parser.add_argument(
+        "--date",
+        required=True,
+        help="Target date in YYYY-MM-DD format",
+    )
+    parser.add_argument(
+        "--window",
+        type=int,
+        default=15,
+        help="Time window in minutes for matching (default: 15)",
+    )
+
+    args = parser.parse_args()
+
+    correlate(
+        args.buses,
+        args.gtfs_dir,
+        args.output,
+        date=args.date,
+        time_window_minutes=args.window,
+    )
