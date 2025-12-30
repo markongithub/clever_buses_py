@@ -258,7 +258,9 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
         if nearest is None:
-            # print(f"No scheduled stop on any {r['fs']} trip is near ({lat},{lon})")
+            print(
+                f"{r['retrieved_at']} bus {r['id']} with head sign {r['fs']} was at ({lat},{lon}) but no scheduled stop is near there."
+            )
             continue
         else:
             # print(f"Nearest stop: {nearest['stop_name']}")
@@ -273,6 +275,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             # print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
+                # TODO: stop using absolute value. Make early negative and late positive. Or the other way around.
                 candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
                 within = candidates.loc[candidates["dt_abs"] <= window]
                 # print(f"within: {within}")
