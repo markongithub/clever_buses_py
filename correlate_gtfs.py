@@ -3,7 +3,6 @@ import os
 import zipfile
 import tempfile
 import pandas as pd
-from datetime import timedelta
 import numpy as np
 from nearest_stop import StopIndex
 from zoneinfo import ZoneInfo
@@ -230,6 +229,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     for c in required_cols:
         if c not in stop_times.columns:
             raise RuntimeError(f"GTFS stop_times.txt missing column {c}")
+    stop_times = stop_times[["trip_id", "arrival_time", "stop_id", "stop_sequence"]]
     stop_times["stop_sequence"] = stop_times["stop_sequence"].astype(int)
     stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
 
@@ -274,6 +274,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     print(f"Service IDs now in trips: {debug_service_ids}")
     total_bus_rows = len(buses)
     buses_processed = 0
+    stop_ids_cache = {}
     for _, r in buses.iterrows():
         buses_processed += 1
         if buses_processed % OUTPUT_FREQUENCY == 0:
@@ -289,7 +290,14 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             continue
         # print(r.to_dict())
         fixed_headsign = fix_headsign_for_gtfs(r["fs"])
-        stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, fixed_headsign)
+        stop_ids_from_cache = stop_ids_cache.get(fixed_headsign)
+        if stop_ids_from_cache:
+            stop_ids_for_headsign = stop_ids_from_cache
+        else:
+            stop_ids_for_headsign = stop_ids_by_headsign(
+                stop_times, trips, fixed_headsign
+            )
+            stop_ids_cache[fixed_headsign] = stop_ids_for_headsign
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
         if nearest is None:
