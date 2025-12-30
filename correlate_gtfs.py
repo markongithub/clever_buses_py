@@ -265,7 +265,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
-        scheduled_match = None
+        # print(f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}...")
         if stop_id:
             candidates = merged.loc[
                 (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
@@ -279,24 +279,28 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                 if not within.empty:
                     best_index = within["dt_abs"].idxmin()
                     best = within.loc[best_index]
-                    scheduled_match = {
-                        "trip_id": best["trip_id"],
-                        "route_id": best.get("route_id", ""),
-                        "trip_headsign": best.get(
-                            "trip_headsign", best.get("trip_headsign_trip", "")
-                        ),
-                        "scheduled_arrival": best["arrival_dt"],
-                        "time_diff_s": int(best["dt_abs"].total_seconds()),
-                    }
                     # Only populate if we haven't already observed this scheduled stop
-                    if pd.isna(merged.at[best_index, "observed_at"]):
+                    if (
+                        pd.isna(merged.at[best_index, "observed_at"])
+                        or merged.at[best_index, "stop_sequence"] == 1
+                    ):
                         merged.at[best_index, "observed_at"] = retrieved_at
                         merged.at[best_index, "bus_id"] = r["id"]
                         merged.at[best_index, "lat"] = lat
                         merged.at[best_index, "lon"] = lon
-                        merged.at[best_index, "time_diff_s"] = scheduled_match[
-                            "time_diff_s"
-                        ]
+                        merged.at[best_index, "time_diff_s"] = int(
+                            best["dt_abs"].total_seconds()
+                        )
+                    else:
+                        recorded_bus = merged.at[best_index, "bus_id"]
+                        if recorded_bus == r["id"]:
+                            print(
+                                f"Bus {r['id']} with head sign {r['fs']} was already at {nearest['stop_name']} so we won't edit the arrival data."
+                            )
+                        else:
+                            print(
+                                f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} before but now we have {r["id"]}"
+                            )
 
     merged.to_csv(output_csv, index=False)
 
