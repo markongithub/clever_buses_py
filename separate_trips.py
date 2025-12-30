@@ -24,8 +24,8 @@ for name, group in df.groupby("id"):
         # think is the unique ID of a trip.
         this_trip = {k: row.get(k) for k in ["fs", "dd", "pid", "run", "bid", "id", "rt"]}
         this_stop_maybe = stop_index.find_stop(float(row["lat"]), float(row["lon"]))
-        if this_stop_maybe:
-            stop_name = this_stop_maybe
+        if this_stop_maybe is not None:
+            stop_name = this_stop_maybe["stop_name"]
         else:
             stop_name = "not near any known stop"
         this_coords = "{lat},{lon} ({stop_name})".format(lat=row["lat"][:7], lon=row["lon"][:7], stop_name=stop_name)
