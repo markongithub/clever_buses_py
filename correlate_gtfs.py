@@ -237,7 +237,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     merged["bus_id"] = None
     merged["lat"] = np.nan
     merged["lon"] = np.nan
-    merged["time_diff_s"] = None
+    merged["late"] = None
 
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
@@ -251,7 +251,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        if r.get("id") not in ["1762", "1909"]:
+        if r.get("id") not in ["2481"]:
             continue
         # if r.get("rt") != CLEVER_ROUTE_ID:
         #     continue
@@ -274,13 +274,13 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             candidates = merged.loc[
                 (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
             ].copy()
-            print(f"Candidates: {candidates}")
+            # print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
                 # TODO: stop using absolute value. Make early negative and late positive. Or the other way around.
                 candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
                 within = candidates.loc[candidates["dt_abs"] <= window]
-                print(f"within: {within}")
+                # print(f"within: {within}")
                 if not within.empty:
                     best_index = within["dt_abs"].idxmin()
                     best = within.loc[best_index]
@@ -293,8 +293,8 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                         merged.at[best_index, "bus_id"] = r["id"]
                         merged.at[best_index, "lat"] = lat
                         merged.at[best_index, "lon"] = lon
-                        merged.at[best_index, "time_diff_s"] = int(
-                            best["dt_abs"].total_seconds()
+                        merged.at[best_index, "late"] = int(
+                            (retrieved_at - best["arrival_dt"]).total_seconds()
                         )
                     else:
                         recorded_bus = merged.at[best_index, "bus_id"]
