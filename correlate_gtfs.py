@@ -218,7 +218,12 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
 
     # join stop_times -> trips to get route_id / trip_headsign if available
     print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
-    merged = stop_times.merge(trips, on="trip_id", how="inner", suffixes=("", "_trip"))
+    merged = stop_times.merge(
+        trips[["route_id", "service_id", "trip_id", "trip_headsign", "block_id"]],
+        on="trip_id",
+        how="inner",
+        suffixes=("", "_trip"),
+    )
     # This is just for debugging, remove it later
     merged = merged.merge(
         stops[["stop_id", "stop_name"]],
@@ -283,8 +288,8 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             # print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC; compute absolute time diff
-                # TODO: stop using absolute value. Make early negative and late positive. Or the other way around.
                 candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
+                # TODO: We could make this window flexible if we know a bus is already running very late.
                 within = candidates.loc[candidates["dt_abs"] <= window]
                 # print(f"within: {within}")
                 if not within.empty:
@@ -345,8 +350,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--window",
         type=int,
-        default=15,
-        help="Time window in minutes for matching (default: 15)",
+        default=20,
+        help="Time window in minutes for matching (default: 20)",
     )
 
     args = parser.parse_args()
