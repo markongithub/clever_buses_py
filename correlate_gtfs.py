@@ -16,6 +16,8 @@ GTFS_FILES = [
     "calendar.txt",
     "calendar_dates.txt",
 ]
+GTFS_ROUTE_ID = "21337"
+CLEVER_ROUTE_ID = "SY20"
 
 
 def extract_gtfs_tables(gtfs_zip_path):
@@ -223,7 +225,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         suffixes=("", "_trip"),
     )
     # merged = merged.loc[merged["block_id"] == "268630"]
-    merged = merged.loc[merged["route_id"] == "21337"]
+    merged = merged.loc[merged["route_id"] == GTFS_ROUTE_ID]
     print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
 
     # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
@@ -231,7 +233,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     merged = build_scheduled_datetimes(merged, date_ts, tzname=agency_tz)
 
     # add placeholder columns for observed data; they'll be populated later
-    merged["observed_at"] = pd.NaT
+    merged["observed_at"] = pd.Series(dtype="datetime64[ns, UTC]")
     merged["bus_id"] = None
     merged["lat"] = np.nan
     merged["lon"] = np.nan
@@ -249,11 +251,11 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        # if r.get("id") != "2481":
-        #    continue
-        if r.get("rt") != "SY20":
+        if r.get("id") not in ["1762", "1909"]:
             continue
-        # print(r.to_dict())
+        # if r.get("rt") != CLEVER_ROUTE_ID:
+        #     continue
+        print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
@@ -272,12 +274,12 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             candidates = merged.loc[
                 (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
             ].copy()
-            # print(f"Candidates: {candidates}")
+            print(f"Candidates: {candidates}")
             if not candidates.empty:
                 # arrival_dt is tz-aware UTC
                 candidates["late"] = retrieved_at - candidates["arrival_dt"]
                 within = candidates.loc[candidates["late"].abs() <= window]
-                # print(f"within: {within}")
+                print(f"within: {within}")
                 if not within.empty:
                     best_index = within["late"].idxmin()
                     best = within.loc[best_index]
@@ -301,7 +303,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                             )
                         else:
                             print(
-                                f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} before but now we have {r["id"]}"
+                                f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, "observed_at"]} but at {retrieved_at} we have {r["id"]}"
                             )
 
     merged.to_csv(output_csv, index=False)
