@@ -16,7 +16,7 @@ GTFS_FILES = [
     "calendar.txt",
     "calendar_dates.txt",
 ]
-GTFS_ROUTE_ID = "21337"
+GTFS_ROUTE_ID = "Sy 20"
 CLEVER_ROUTE_ID = "SY20"
 
 
@@ -91,10 +91,12 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     stops_path = os.path.join(gtfs_dir, "stops.txt")
     stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
     trips_path = os.path.join(gtfs_dir, "trips.txt")
+    routes_path = os.path.join(gtfs_dir, "routes.txt")
 
     stops = pd.read_csv(stops_path, dtype=str)
     stop_times = pd.read_csv(stop_times_path, dtype=str)
     trips = pd.read_csv(trips_path, dtype=str)
+    routes = pd.read_csv(routes_path, dtype=str)
 
     # --- START: filter trips by active service_id using calendar / calendar_dates ---
     target_date = pd.to_datetime(date).date()
@@ -222,10 +224,14 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         stops[["stop_id", "stop_name"]],
         on="stop_id",
         how="inner",
-        suffixes=("", "_trip"),
+    )
+    merged = merged.merge(
+        routes[["route_id", "route_short_name"]],
+        on="route_id",
+        how="inner",
     )
     # merged = merged.loc[merged["block_id"] == "268630"]
-    merged = merged.loc[merged["route_id"] == GTFS_ROUTE_ID]
+    merged = merged.loc[merged["route_short_name"] == GTFS_ROUTE_ID]
     print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
 
     # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
@@ -255,7 +261,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             continue
         # if r.get("rt") != CLEVER_ROUTE_ID:
         #     continue
-        print(r.to_dict())
+        # print(r.to_dict())
         stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
