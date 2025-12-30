@@ -1,3 +1,4 @@
+import html
 import os
 import zipfile
 import tempfile
@@ -18,6 +19,16 @@ GTFS_FILES = [
 ]
 GTFS_ROUTE_ID = "Sy 20"
 CLEVER_ROUTE_ID = "SY20"
+OUTPUT_FREQUENCY = 1000
+CLEVER_TO_GTFS_SIGN_MISMATCHES = {
+    # The headsign in the Clever API is almost always identical to the one in
+    # GTFS, but not always.
+    "121 James - Sunnycrest Ext": "121 James-Sunnycrest Ext",
+    "123 James Street/ To Hub": "123 James Street to Hub",
+    # The 220 seems to have "220 James St - Molloy Rd - Airpark" as its Clever
+    # headsign often, even when it should be "220 James St - To Hub". Not sure
+    # what to do about that yet.
+}
 
 
 def extract_gtfs_tables(gtfs_zip_path):
@@ -63,6 +74,7 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
     Return a list of stop_ids used by trips whose trip_headsign equals `headsign` exactly.
     Exact match is performed after trimming whitespace. Preserves first-seen order by trip_id and stop_sequence.
     """
+    # print(f"Calling stop_ids_by_headsign for {headsign}")
     hs = trips_df["trip_headsign"]
     mask = hs == headsign
     if not mask.any():
@@ -79,6 +91,10 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
     return st["stop_id"].unique().tolist()
 
 
+def fix_headsign_for_gtfs(headsign):
+    return CLEVER_TO_GTFS_SIGN_MISMATCHES.get(headsign, headsign)
+
+
 def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15):
     # load buses
     buses = pd.read_parquet(buses_parquet)
@@ -87,6 +103,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         raise RuntimeError("parquet must have 'retrieved_at' timestamp column")
     # ensure datetime64[ns, tz] or naive; normalize to UTC tz-aware for comparisons
     buses["retrieved_at"] = pd.to_datetime(buses["retrieved_at"], utc=True)
+    buses["fs"] = buses["fs"].apply(html.unescape)
 
     stops_path = os.path.join(gtfs_dir, "stops.txt")
     stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
@@ -252,28 +269,33 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
 
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
-    rows = []
     window = pd.Timedelta(minutes=time_window_minutes)
     # This sucks. It only works on one day at a time and would completely fail if a trip crossed midnight local time.
     print(f"Service IDs now in trips: {debug_service_ids}")
+    total_bus_rows = len(buses)
+    buses_processed = 0
     for _, r in buses.iterrows():
+        buses_processed += 1
+        if buses_processed % OUTPUT_FREQUENCY == 0:
+            print(f"Processed {buses_processed}/{total_bus_rows}...")
         lat = float(r.get("lat", np.nan))
         lon = float(r.get("lon", np.nan))
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        if r.get("id") not in ["2481"]:
-            continue
-        # if r.get("rt") != CLEVER_ROUTE_ID:
+        # if r.get("id") not in ["2481"]:
         #     continue
+        if r.get("rt") != CLEVER_ROUTE_ID:
+            continue
         # print(r.to_dict())
-        stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, r["fs"])
+        fixed_headsign = fix_headsign_for_gtfs(r["fs"])
+        stop_ids_for_headsign = stop_ids_by_headsign(stop_times, trips, fixed_headsign)
         # print(f"Based on the head sign the stop must be one of {stop_ids_for_headsign}")
         nearest = stop_index.find_stop(lat, lon, frozenset(stop_ids_for_headsign))
         if nearest is None:
-            print(
-                f"{r['retrieved_at']} bus {r['id']} with head sign {r['fs']} was at ({lat},{lon}) but no scheduled stop is near there."
-            )
+            # print(
+            #    f"{r['retrieved_at']} bus {r['id']} with head sign {r['fs']} was at ({lat},{lon}) but no scheduled stop is near there."
+            # )
             continue
         else:
             # print(f"Nearest stop: {nearest['stop_name']}")
@@ -283,7 +305,8 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
         # print(f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}...")
         if stop_id:
             candidates = merged.loc[
-                (merged["stop_id"] == stop_id) & (merged["trip_headsign"] == r["fs"])
+                (merged["stop_id"] == stop_id)
+                & (merged["trip_headsign"] == fixed_headsign)
             ].copy()
             # print(f"Candidates: {candidates}")
             if not candidates.empty:
@@ -310,15 +333,95 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                     else:
                         recorded_bus = merged.at[best_index, "bus_id"]
                         if recorded_bus == r["id"]:
-                            print(
-                                f"Bus {r['id']} with head sign {r['fs']} was already at {nearest['stop_name']} so we won't edit the arrival data."
-                            )
+                            # print(
+                            #    f"Bus {r['id']} with head sign {r['fs']} was already at {nearest['stop_name']} so we won't edit the arrival data."
+                            # )
+                            pass
                         else:
                             print(
                                 f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, "observed_at"]} but at {retrieved_at} we have {r["id"]}"
                             )
-
+            else:
+                print(
+                    f"No candidates for {r['fs']} near {nearest['stop_name']} at {retrieved_at}"
+                )
+    summarize_findings(merged)
     merged.to_csv(output_csv, index=False)
+
+
+def summarize_findings(stop_times_merged_df):
+    """
+    Summarize correlation findings by counting trips with and without observed_at data.
+    """
+    # Group by trip_id to analyze at the trip level
+    trip_groups = stop_times_merged_df.groupby("trip_id")
+
+    # Identify trips with and without observations
+    trips_with_obs_mask = trip_groups["observed_at"].apply(lambda x: x.notna().any())
+    trips_with_observations = trips_with_obs_mask.sum()
+
+    # Total unique trips
+    total_trips = len(trip_groups)
+
+    # Trips without any observations
+    trips_without_observations = total_trips - trips_with_observations
+
+    # Stop-level statistics
+    total_stops = len(stop_times_merged_df)
+    observed_stops = stop_times_merged_df["observed_at"].notna().sum()
+    unobserved_stops = total_stops - observed_stops
+
+    print("\n" + "=" * 60)
+    print("CORRELATION SUMMARY")
+    print("=" * 60)
+    print(f"\nTrip-level statistics:")
+    print(f"  Total trips: {total_trips}")
+    print(
+        f"  Trips with observations: {trips_with_observations} ({trips_with_observations/total_trips*100:.1f}%)"
+    )
+    print(
+        f"  Trips without observations: {trips_without_observations} ({trips_without_observations/total_trips*100:.1f}%)"
+    )
+    # List trips without observations
+    if trips_without_observations > 0:
+        print(f"\nTrips without observations ({trips_without_observations} total):")
+        print("-" * 60)
+
+        # Get trip_ids without observations
+        trips_without_obs_ids = trips_with_obs_mask[~trips_with_obs_mask].index.tolist()
+
+        # Get details for each trip without observations
+        unobserved_trips = stop_times_merged_df[
+            stop_times_merged_df["trip_id"].isin(trips_without_obs_ids)
+        ].copy()
+
+        # Get first stop for each trip (sorted by stop_sequence)
+        first_stops = (
+            unobserved_trips.sort_values("stop_sequence")
+            .groupby("trip_id")
+            .first()
+            .reset_index()
+        )
+
+        # Sort by departure time
+        first_stops = first_stops.sort_values("arrival_dt")
+
+        for _, trip in first_stops.iterrows():
+            trip_id = trip["trip_id"]
+            headsign = trip.get("trip_headsign", "Unknown")
+            departure = trip["arrival_dt"]
+            block = trip["block_id"]
+            print(f"  {trip_id} from block {block}: {headsign} @ {departure}")
+
+    print("=" * 60 + "\n")
+    print(f"Stop-level statistics:")
+    print(f"  Total scheduled stops: {total_stops}")
+    print(
+        f"  Stops with observations: {observed_stops} ({observed_stops/total_stops*100:.1f}%)"
+    )
+    print(
+        f"  Stops without observations: {unobserved_stops} ({unobserved_stops/total_stops*100:.1f}%)"
+    )
 
 
 if __name__ == "__main__":
