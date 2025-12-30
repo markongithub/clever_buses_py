@@ -276,12 +276,13 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             ].copy()
             print(f"Candidates: {candidates}")
             if not candidates.empty:
-                # arrival_dt is tz-aware UTC
-                candidates["late"] = retrieved_at - candidates["arrival_dt"]
-                within = candidates.loc[candidates["late"].abs() <= window]
+                # arrival_dt is tz-aware UTC; compute absolute time diff
+                # TODO: stop using absolute value. Make early negative and late positive. Or the other way around.
+                candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
+                within = candidates.loc[candidates["dt_abs"] <= window]
                 print(f"within: {within}")
                 if not within.empty:
-                    best_index = within["late"].idxmin()
+                    best_index = within["dt_abs"].idxmin()
                     best = within.loc[best_index]
                     # Only populate if we haven't already observed this scheduled stop
                     if (
@@ -293,7 +294,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
                         merged.at[best_index, "lat"] = lat
                         merged.at[best_index, "lon"] = lon
                         merged.at[best_index, "time_diff_s"] = int(
-                            best["late"].total_seconds()
+                            best["dt_abs"].total_seconds()
                         )
                     else:
                         recorded_bus = merged.at[best_index, "bus_id"]
