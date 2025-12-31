@@ -94,6 +94,27 @@ def fix_headsign_for_gtfs(headsign):
     return CLEVER_TO_GTFS_SIGN_MISMATCHES.get(headsign, headsign)
 
 
+def best_row_for_observation(merged_df, stop_id, headsign, retrieved_at, window):
+    candidates = merged_df.loc[
+        (merged_df["stop_id"] == stop_id) & (merged_df["trip_headsign"] == headsign)
+    ].copy()
+    # print(f"Candidates: {candidates}")
+    if candidates.empty:
+        print(f"No candidates for {r['fs']} near {stop_id} at {retrieved_at}")
+        return None
+
+    # arrival_dt is tz-aware UTC; compute absolute time diff
+    candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
+    # TODO: We could make this window flexible if we know a bus is already running very late.
+    within = candidates.loc[candidates["dt_abs"] <= window]
+    print(f"within: {within}")
+    if within.empty:
+        print("Fucked.")
+        return None
+    best_index = within["dt_abs"].idxmin()
+    return best_index
+
+
 def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15):
     # load buses
     buses = pd.read_parquet(buses_parquet)
@@ -310,48 +331,40 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
-        # print(f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}...")
-        if stop_id:
-            candidates = merged.loc[
-                (merged["stop_id"] == stop_id)
-                & (merged["trip_headsign"] == fixed_headsign)
-            ].copy()
-            # print(f"Candidates: {candidates}")
-            if not candidates.empty:
-                # arrival_dt is tz-aware UTC; compute absolute time diff
-                candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
-                # TODO: We could make this window flexible if we know a bus is already running very late.
-                within = candidates.loc[candidates["dt_abs"] <= window]
-                # print(f"within: {within}")
-                if not within.empty:
-                    best_index = within["dt_abs"].idxmin()
-                    best = within.loc[best_index]
-                    # Only populate if we haven't already observed this scheduled stop
-                    if (
-                        pd.isna(merged.at[best_index, "observed_at"])
-                        or merged.at[best_index, "stop_sequence"] == 1
-                    ):
-                        merged.at[best_index, "observed_at"] = retrieved_at
-                        merged.at[best_index, "bus_id"] = r["id"]
-                        merged.at[best_index, "lat"] = lat
-                        merged.at[best_index, "lon"] = lon
-                        merged.at[best_index, "late"] = int(
-                            (retrieved_at - best["arrival_dt"]).total_seconds()
-                        )
-                    else:
-                        recorded_bus = merged.at[best_index, "bus_id"]
-                        if recorded_bus == r["id"]:
-                            # print(
-                            #    f"Bus {r['id']} with head sign {r['fs']} was already at {nearest['stop_name']} so we won't edit the arrival data."
-                            # )
-                            pass
-                        else:
-                            print(
-                                f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, "observed_at"]} but at {retrieved_at} we have {r["id"]}"
-                            )
+        print(
+            f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}..."
+        )
+        if not stop_id:
+            continue
+        best_index = best_row_for_observation(
+            merged, stop_id, fixed_headsign, retrieved_at, window
+        )
+        if best_index is None:
+            print("We didn't get a best row. Fucked.")
+            continue
+        print(f"best_index: {best_index}")
+        # Only populate if we haven't already observed this scheduled stop
+        if (
+            pd.isna(merged.at[best_index, "observed_at"])
+            or merged.at[best_index, "stop_sequence"] == 1
+        ):
+            merged.at[best_index, "observed_at"] = retrieved_at
+            merged.at[best_index, "bus_id"] = r["id"]
+            merged.at[best_index, "lat"] = lat
+            merged.at[best_index, "lon"] = lon
+            merged.at[best_index, "late"] = int(
+                (retrieved_at - merged.at[best_index, "arrival_dt"]).total_seconds()
+            )
+        else:
+            recorded_bus = merged.at[best_index, "bus_id"]
+            if recorded_bus == r["id"]:
+                # print(
+                #    f"Bus {r['id']} with head sign {r['fs']} was already at {nearest['stop_name']} so we won't edit the arrival data."
+                # )
+                pass
             else:
                 print(
-                    f"No candidates for {r['fs']} near {nearest['stop_name']} at {retrieved_at}"
+                    f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, "observed_at"]} but at {retrieved_at} we have {r["id"]}"
                 )
     summarize_findings(merged)
     merged.to_csv(output_csv, index=False)
