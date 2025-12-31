@@ -107,12 +107,60 @@ def best_row_for_observation(merged_df, stop_id, headsign, retrieved_at, window)
     candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
     # TODO: We could make this window flexible if we know a bus is already running very late.
     within = candidates.loc[candidates["dt_abs"] <= window]
-    print(f"within: {within}")
+    # print(f"within: {within}")
     if within.empty:
-        print("Fucked.")
+        # print("Fucked.")
         return None
     best_index = within["dt_abs"].idxmin()
     return best_index
+
+
+def build_merged_df(stop_times, stops, routes, trips, date, agency_tz):
+    # keep required columns (tolerant to missing optional fields)
+    stop_times = stop_times.rename(columns=lambda c: c.strip())
+    required_cols = ["trip_id", "arrival_time", "stop_id", "stop_sequence"]
+    for c in required_cols:
+        if c not in stop_times.columns:
+            raise RuntimeError(f"GTFS stop_times.txt missing column {c}")
+    stop_times = stop_times[["trip_id", "arrival_time", "stop_id", "stop_sequence"]]
+    stop_times["stop_sequence"] = stop_times["stop_sequence"].astype(int)
+    stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
+
+    # join stop_times -> trips to get route_id / trip_headsign if available
+    print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
+    merged = stop_times.merge(
+        trips[["route_id", "service_id", "trip_id", "trip_headsign", "block_id"]],
+        on="trip_id",
+        how="inner",
+        suffixes=("", "_trip"),
+    )
+    # This is just for debugging, remove it later
+    merged = merged.merge(
+        stops[["stop_id", "stop_name"]],
+        on="stop_id",
+        how="inner",
+    )
+    merged = merged.merge(
+        routes[["route_id", "route_short_name"]],
+        on="route_id",
+        how="inner",
+    )
+    # merged = merged.loc[merged["block_id"] == "268630"]
+    merged = merged.loc[merged["route_short_name"] == GTFS_ROUTE_ID]
+    print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
+
+    # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
+    date_ts = pd.Timestamp(date)  # keep as naive local date
+    merged = build_scheduled_datetimes(merged, date_ts, tzname=agency_tz)
+
+    # add placeholder columns for observed data; they'll be populated later
+    merged["observed_at"] = pd.Series(dtype="datetime64[ns, UTC]")
+    merged["bus_id"] = None
+    merged["lat"] = np.nan
+    merged["lon"] = np.nan
+    merged["late"] = None
+
+    return merged
 
 
 def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15):
@@ -244,49 +292,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     else:
         print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
 
-    # keep required columns (tolerant to missing optional fields)
-    stop_times = stop_times.rename(columns=lambda c: c.strip())
-    required_cols = ["trip_id", "arrival_time", "stop_id", "stop_sequence"]
-    for c in required_cols:
-        if c not in stop_times.columns:
-            raise RuntimeError(f"GTFS stop_times.txt missing column {c}")
-    stop_times = stop_times[["trip_id", "arrival_time", "stop_id", "stop_sequence"]]
-    stop_times["stop_sequence"] = stop_times["stop_sequence"].astype(int)
-    stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
-
-    # join stop_times -> trips to get route_id / trip_headsign if available
-    print(f"Service IDs now in trips: {trips['service_id'].unique().tolist()}")
-    merged = stop_times.merge(
-        trips[["route_id", "service_id", "trip_id", "trip_headsign", "block_id"]],
-        on="trip_id",
-        how="inner",
-        suffixes=("", "_trip"),
-    )
-    # This is just for debugging, remove it later
-    merged = merged.merge(
-        stops[["stop_id", "stop_name"]],
-        on="stop_id",
-        how="inner",
-    )
-    merged = merged.merge(
-        routes[["route_id", "route_short_name"]],
-        on="route_id",
-        how="inner",
-    )
-    # merged = merged.loc[merged["block_id"] == "268630"]
-    merged = merged.loc[merged["route_short_name"] == GTFS_ROUTE_ID]
-    print(f"Service IDs now in merged: {merged['service_id'].unique().tolist()}")
-
-    # convert GTFS times to datetimes on the target date (localized to agency timezone then converted to UTC)
-    date_ts = pd.Timestamp(date)  # keep as naive local date
-    merged = build_scheduled_datetimes(merged, date_ts, tzname=agency_tz)
-
-    # add placeholder columns for observed data; they'll be populated later
-    merged["observed_at"] = pd.Series(dtype="datetime64[ns, UTC]")
-    merged["bus_id"] = None
-    merged["lat"] = np.nan
-    merged["lon"] = np.nan
-    merged["late"] = None
+    merged = build_merged_df(stop_times, stops, routes, trips, date, agency_tz)
 
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
@@ -331,18 +337,18 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             stop_id = str(nearest["stop_id"])
 
         retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
-        print(
-            f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}..."
-        )
+        # print(
+        #    f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}..."
+        # )
         if not stop_id:
             continue
         best_index = best_row_for_observation(
             merged, stop_id, fixed_headsign, retrieved_at, window
         )
         if best_index is None:
-            print("We didn't get a best row. Fucked.")
+            # print("We didn't get a best row. Fucked.")
             continue
-        print(f"best_index: {best_index}")
+        # print(f"best_index: {best_index}")
         # Only populate if we haven't already observed this scheduled stop
         if (
             pd.isna(merged.at[best_index, "observed_at"])
