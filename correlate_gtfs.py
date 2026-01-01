@@ -163,6 +163,60 @@ def build_merged_df(stop_times, stops, routes, trips, date, agency_tz):
     return merged
 
 
+def service_ids_for_date(cal, cdates, target_date):
+    active_services = set()
+    cal["start_date"] = pd.to_datetime(
+        cal["start_date"], format="%Y%m%d", errors="coerce"
+    ).dt.date
+    cal["end_date"] = pd.to_datetime(
+        cal["end_date"], format="%Y%m%d", errors="coerce"
+    ).dt.date
+    weekday_cols = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
+    weekday_col = weekday_cols[target_date.weekday()]
+    if weekday_col in cal.columns:
+        mask = (
+            cal["start_date"].notna()
+            & cal["end_date"].notna()
+            & (cal["start_date"] <= target_date)
+            & (cal["end_date"] >= target_date)
+            & (cal[weekday_col].astype(str).str.strip() == "1")
+        )
+        active_services.update(cal.loc[mask, "service_id"].astype(str).tolist())
+
+    cdates["date_parsed"] = pd.to_datetime(
+        cdates["date"], format="%Y%m%d", errors="coerce"
+    ).dt.date
+    adds = (
+        cdates.loc[
+            (cdates["date_parsed"] == target_date)
+            & (cdates["exception_type"].astype(str).str.strip() == "1"),
+            "service_id",
+        ]
+        .astype(str)
+        .tolist()
+    )
+    removes = (
+        cdates.loc[
+            (cdates["date_parsed"] == target_date)
+            & (cdates["exception_type"].astype(str).str.strip() == "2"),
+            "service_id",
+        ]
+        .astype(str)
+        .tolist()
+    )
+    active_services.update(adds)
+    active_services.difference_update(removes)
+    return active_services
+
+
 def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15):
     # load buses
     buses = pd.read_parquet(buses_parquet)
@@ -191,87 +245,23 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
 
     calendar_found = False
     calendar_dates_found = False
-    active_services = set()
+    calendar_df = pd.read_csv(calendar_path, dtype=str).rename(
+        columns=lambda c: c.strip()
+    )
+    calendar_dates_df = pd.read_csv(calendar_dates_path, dtype=str).rename(
+        columns=lambda c: c.strip()
+    )
+    active_services = service_ids_for_date(calendar_df, calendar_dates_df, target_date)
 
-    if os.path.exists(calendar_path):
-        calendar_found = True
-        cal = pd.read_csv(calendar_path, dtype=str).rename(columns=lambda c: c.strip())
-        if {"service_id", "start_date", "end_date"}.issubset(cal.columns):
-            cal["start_date"] = pd.to_datetime(
-                cal["start_date"], format="%Y%m%d", errors="coerce"
-            ).dt.date
-            cal["end_date"] = pd.to_datetime(
-                cal["end_date"], format="%Y%m%d", errors="coerce"
-            ).dt.date
-            weekday_cols = [
-                "monday",
-                "tuesday",
-                "wednesday",
-                "thursday",
-                "friday",
-                "saturday",
-                "sunday",
-            ]
-            weekday_col = weekday_cols[target_date.weekday()]
-            if weekday_col in cal.columns:
-                mask = (
-                    cal["start_date"].notna()
-                    & cal["end_date"].notna()
-                    & (cal["start_date"] <= target_date)
-                    & (cal["end_date"] >= target_date)
-                    & (cal[weekday_col].astype(str).str.strip() == "1")
-                )
-                active_services.update(cal.loc[mask, "service_id"].astype(str).tolist())
-        else:
-            print("calendar.txt present but missing required columns; ignoring.")
-    if os.path.exists(calendar_dates_path):
-        calendar_dates_found = True
-        cdates = pd.read_csv(calendar_dates_path, dtype=str).rename(
-            columns=lambda c: c.strip()
-        )
-        if {"service_id", "date", "exception_type"}.issubset(cdates.columns):
-            cdates["date_parsed"] = pd.to_datetime(
-                cdates["date"], format="%Y%m%d", errors="coerce"
-            ).dt.date
-            adds = (
-                cdates.loc[
-                    (cdates["date_parsed"] == target_date)
-                    & (cdates["exception_type"].astype(str).str.strip() == "1"),
-                    "service_id",
-                ]
-                .astype(str)
-                .tolist()
-            )
-            removes = (
-                cdates.loc[
-                    (cdates["date_parsed"] == target_date)
-                    & (cdates["exception_type"].astype(str).str.strip() == "2"),
-                    "service_id",
-                ]
-                .astype(str)
-                .tolist()
-            )
-            active_services.update(adds)
-            active_services.difference_update(removes)
-        else:
-            print("calendar_dates.txt present but missing required columns; ignoring.")
+    print(f"Active services: {active_services}")
 
-    if calendar_found or calendar_dates_found:
-        print(f"Active services: {active_services}")
-        if "service_id" in trips.columns:
-            trips_before = len(trips)
-            trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
-            print(
-                f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
-            )
-            debug_service_ids = trips["service_id"].unique().tolist()
-            print(f"Service IDs now in trips: {debug_service_ids}")
-        else:
-            print(
-                "Calendar files found but trips.txt has no service_id; skipping service filtering."
-            )
-    else:
-        print("No calendar/calendar_dates found; not filtering trips by service date.")
+    trips_before = len(trips)
+    trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
+    print(
+        f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
+    )
+    debug_service_ids = trips["service_id"].unique().tolist()
+    print(f"Service IDs now in trips: {debug_service_ids}")
     # --- END: calendar filtering ---
 
     # try to read agency timezone
