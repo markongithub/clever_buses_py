@@ -18,7 +18,7 @@ GTFS_FILES = [
 ]
 GTFS_ROUTE_ID = "Sy 20"
 CLEVER_ROUTE_ID = "SY20"
-OUTPUT_FREQUENCY = 1000
+OUTPUT_FREQUENCY = 5000
 CLEVER_TO_GTFS_SIGN_MISMATCHES = {
     # The headsign in the Clever API is almost always identical to the one in
     # GTFS, but not always.
@@ -163,6 +163,63 @@ def build_merged_df(stop_times, stops, routes, trips, date, agency_tz):
     return merged
 
 
+def build_full_schedule(gtfs_dir, date):
+    stops_path = os.path.join(gtfs_dir, "stops.txt")
+    stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
+    trips_path = os.path.join(gtfs_dir, "trips.txt")
+    routes_path = os.path.join(gtfs_dir, "routes.txt")
+
+    stops = pd.read_csv(stops_path, dtype=str)
+    stop_times = pd.read_csv(stop_times_path, dtype=str)
+    trips = pd.read_csv(trips_path, dtype=str)
+    routes = pd.read_csv(routes_path, dtype=str)
+
+    # --- START: filter trips by active service_id using calendar / calendar_dates ---
+    target_date = pd.to_datetime(date).date()
+
+    calendar_path = os.path.join(gtfs_dir, "calendar.txt")
+    calendar_dates_path = os.path.join(gtfs_dir, "calendar_dates.txt")
+
+    calendar_df = pd.read_csv(calendar_path, dtype=str).rename(
+        columns=lambda c: c.strip()
+    )
+    calendar_dates_df = pd.read_csv(calendar_dates_path, dtype=str).rename(
+        columns=lambda c: c.strip()
+    )
+    active_services = service_ids_for_date(calendar_df, calendar_dates_df, target_date)
+
+    print(f"Active services: {active_services}")
+
+    trips_before = len(trips)
+    trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
+    print(
+        f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
+    )
+    debug_service_ids = trips["service_id"].unique().tolist()
+    print(f"Service IDs now in trips: {debug_service_ids}")
+    # --- END: calendar filtering ---
+
+    # try to read agency timezone
+    agency_tz = None
+    agency_path = os.path.join(gtfs_dir, "agency.txt")
+    if os.path.exists(agency_path):
+        agency = pd.read_csv(agency_path, dtype=str)
+        if (
+            "agency_timezone" in agency.columns
+            and not agency["agency_timezone"].dropna().empty
+        ):
+            agency_tz = agency["agency_timezone"].dropna().iloc[0]
+            print(f"Using GTFS agency timezone: {agency_tz}")
+        else:
+            print(
+                "agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times."
+            )
+    else:
+        print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
+
+    return build_merged_df(stop_times, stops, routes, trips, date, agency_tz)
+
+
 def service_ids_for_date(cal, cdates, target_date):
     active_services = set()
     cal["start_date"] = pd.to_datetime(
@@ -230,65 +287,14 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
     stops_path = os.path.join(gtfs_dir, "stops.txt")
     stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
     trips_path = os.path.join(gtfs_dir, "trips.txt")
-    routes_path = os.path.join(gtfs_dir, "routes.txt")
 
-    stops = pd.read_csv(stops_path, dtype=str)
     stop_times = pd.read_csv(stop_times_path, dtype=str)
     trips = pd.read_csv(trips_path, dtype=str)
-    routes = pd.read_csv(routes_path, dtype=str)
-
-    # --- START: filter trips by active service_id using calendar / calendar_dates ---
-    target_date = pd.to_datetime(date).date()
-
-    calendar_path = os.path.join(gtfs_dir, "calendar.txt")
-    calendar_dates_path = os.path.join(gtfs_dir, "calendar_dates.txt")
-
-    calendar_found = False
-    calendar_dates_found = False
-    calendar_df = pd.read_csv(calendar_path, dtype=str).rename(
-        columns=lambda c: c.strip()
-    )
-    calendar_dates_df = pd.read_csv(calendar_dates_path, dtype=str).rename(
-        columns=lambda c: c.strip()
-    )
-    active_services = service_ids_for_date(calendar_df, calendar_dates_df, target_date)
-
-    print(f"Active services: {active_services}")
-
-    trips_before = len(trips)
-    trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
-    print(
-        f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
-    )
-    debug_service_ids = trips["service_id"].unique().tolist()
-    print(f"Service IDs now in trips: {debug_service_ids}")
-    # --- END: calendar filtering ---
-
-    # try to read agency timezone
-    agency_tz = None
-    agency_path = os.path.join(gtfs_dir, "agency.txt")
-    if os.path.exists(agency_path):
-        agency = pd.read_csv(agency_path, dtype=str)
-        if (
-            "agency_timezone" in agency.columns
-            and not agency["agency_timezone"].dropna().empty
-        ):
-            agency_tz = agency["agency_timezone"].dropna().iloc[0]
-            print(f"Using GTFS agency timezone: {agency_tz}")
-        else:
-            print(
-                "agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times."
-            )
-    else:
-        print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
-
-    merged = build_merged_df(stop_times, stops, routes, trips, date, agency_tz)
-
+    merged = build_full_schedule(gtfs_dir, date)
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
     window = pd.Timedelta(minutes=time_window_minutes)
-    # This sucks. It only works on one day at a time and would completely fail if a trip crossed midnight local time.
-    print(f"Service IDs now in trips: {debug_service_ids}")
+
     total_bus_rows = len(buses)
     buses_processed = 0
     stop_ids_cache = {}
