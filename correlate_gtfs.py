@@ -159,11 +159,12 @@ def build_merged_df(stop_times, stops, routes, trips, date, agency_tz):
     merged["lat"] = np.nan
     merged["lon"] = np.nan
     merged["late"] = None
+    merged["gtfs_date"] = date
 
     return merged
 
 
-def build_full_schedule(gtfs_dir, date):
+def build_full_schedule(gtfs_dir, dates):
     stops_path = os.path.join(gtfs_dir, "stops.txt")
     stop_times_path = os.path.join(gtfs_dir, "stop_times.txt")
     trips_path = os.path.join(gtfs_dir, "trips.txt")
@@ -174,9 +175,6 @@ def build_full_schedule(gtfs_dir, date):
     trips = pd.read_csv(trips_path, dtype=str)
     routes = pd.read_csv(routes_path, dtype=str)
 
-    # --- START: filter trips by active service_id using calendar / calendar_dates ---
-    target_date = pd.to_datetime(date).date()
-
     calendar_path = os.path.join(gtfs_dir, "calendar.txt")
     calendar_dates_path = os.path.join(gtfs_dir, "calendar_dates.txt")
 
@@ -186,38 +184,48 @@ def build_full_schedule(gtfs_dir, date):
     calendar_dates_df = pd.read_csv(calendar_dates_path, dtype=str).rename(
         columns=lambda c: c.strip()
     )
-    active_services = service_ids_for_date(calendar_df, calendar_dates_df, target_date)
 
-    print(f"Active services: {active_services}")
+    daily_schedules = []
+    for date in dates:
+        target_date = pd.to_datetime(date).date()
 
-    trips_before = len(trips)
-    trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
-    print(
-        f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
-    )
-    debug_service_ids = trips["service_id"].unique().tolist()
-    print(f"Service IDs now in trips: {debug_service_ids}")
-    # --- END: calendar filtering ---
+        active_services = service_ids_for_date(
+            calendar_df, calendar_dates_df, target_date
+        )
 
-    # try to read agency timezone
-    agency_tz = None
-    agency_path = os.path.join(gtfs_dir, "agency.txt")
-    if os.path.exists(agency_path):
-        agency = pd.read_csv(agency_path, dtype=str)
-        if (
-            "agency_timezone" in agency.columns
-            and not agency["agency_timezone"].dropna().empty
-        ):
-            agency_tz = agency["agency_timezone"].dropna().iloc[0]
-            print(f"Using GTFS agency timezone: {agency_tz}")
+        print(f"Active services for {date}: {active_services}")
+
+        trips_before = len(trips)
+        trips = trips[trips["service_id"].astype(str).isin(active_services)].copy()
+        print(
+            f"Filtered trips by service: {trips_before} -> {len(trips)} active trips on {target_date}"
+        )
+        debug_service_ids = trips["service_id"].unique().tolist()
+        print(f"Service IDs now in trips: {debug_service_ids}")
+        # --- END: calendar filtering ---
+
+        # try to read agency timezone
+        agency_tz = None
+        agency_path = os.path.join(gtfs_dir, "agency.txt")
+        if os.path.exists(agency_path):
+            agency = pd.read_csv(agency_path, dtype=str)
+            if (
+                "agency_timezone" in agency.columns
+                and not agency["agency_timezone"].dropna().empty
+            ):
+                agency_tz = agency["agency_timezone"].dropna().iloc[0]
+                print(f"Using GTFS agency timezone: {agency_tz}")
+            else:
+                print(
+                    "agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times."
+                )
         else:
-            print(
-                "agency.txt found but no agency_timezone column; defaulting to UTC for GTFS times."
-            )
-    else:
-        print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
-
-    return build_merged_df(stop_times, stops, routes, trips, date, agency_tz)
+            print("No agency.txt found in GTFS zip; defaulting to UTC for GTFS times.")
+        daily_schedule = build_merged_df(
+            stop_times, stops, routes, trips, date, agency_tz
+        )
+        daily_schedules.append(daily_schedule)
+    return pd.concat(daily_schedules, ignore_index=True)
 
 
 def service_ids_for_date(cal, cdates, target_date):
@@ -290,7 +298,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
 
     stop_times = pd.read_csv(stop_times_path, dtype=str)
     trips = pd.read_csv(trips_path, dtype=str)
-    merged = build_full_schedule(gtfs_dir, date)
+    merged = build_full_schedule(gtfs_dir, [date])
     # build stop index using workspace class
     stop_index = StopIndex(stops_path)
     window = pd.Timedelta(minutes=time_window_minutes)
@@ -308,7 +316,7 @@ def correlate(buses_parquet, gtfs_dir, output_csv, date, time_window_minutes=15)
             print("No lat/lon, nothing we can do here.")
             continue
         # if r.get("id") not in ["2481"]:
-        #     continue
+        #    continue
         if r.get("rt") != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
@@ -377,7 +385,7 @@ def summarize_findings(stop_times_merged_df):
     Summarize correlation findings by counting trips with and without observed_at data.
     """
     # Group by trip_id to analyze at the trip level
-    trip_groups = stop_times_merged_df.groupby("trip_id")
+    trip_groups = stop_times_merged_df.groupby(["gtfs_date", "trip_id"])
 
     # Identify trips with and without observations
     trips_with_obs_mask = trip_groups["observed_at"].apply(lambda x: x.notna().any())
@@ -415,13 +423,14 @@ def summarize_findings(stop_times_merged_df):
 
         # Get details for each trip without observations
         unobserved_trips = stop_times_merged_df[
-            stop_times_merged_df["trip_id"].isin(trips_without_obs_ids)
+            stop_times_merged_df.set_index(["gtfs_date", "trip_id"]).index.isin(
+                trips_without_obs_ids
+            )
         ].copy()
-
         # Get first stop for each trip (sorted by stop_sequence)
         first_stops = (
             unobserved_trips.sort_values("stop_sequence")
-            .groupby("trip_id")
+            .groupby(["gtfs_date", "trip_id"])
             .first()
             .reset_index()
         )
@@ -430,11 +439,14 @@ def summarize_findings(stop_times_merged_df):
         first_stops = first_stops.sort_values("arrival_dt")
 
         for _, trip in first_stops.iterrows():
+            gtfs_date = trip["gtfs_date"]
             trip_id = trip["trip_id"]
             headsign = trip.get("trip_headsign", "Unknown")
             departure = trip["arrival_dt"]
             block = trip["block_id"]
-            print(f"  {trip_id} from block {block}: {headsign} @ {departure}")
+            print(
+                f" {gtfs_date} {trip_id} from block {block}: {headsign} @ {departure}"
+            )
 
     print("=" * 60 + "\n")
     print(f"Stop-level statistics:")
