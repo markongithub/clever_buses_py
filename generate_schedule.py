@@ -217,7 +217,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         required=True,
-        help="Path to the output CSV file",
+        help="Path to the output parquet and CSV files (with no extension)",
     )
     parser.add_argument(
         "--start-date",
@@ -236,4 +236,5 @@ if __name__ == "__main__":
         for date in pd.date_range(start=args.start_date, end=args.end_date)
     ]
     schedule = build_full_schedule(args.gtfs_dir, dates)
-    schedule.to_csv(args.output, index=False)
+    schedule.to_parquet(f"{args.output}.parquet")
+    schedule.to_csv(f"{args.output}_debug.csv", index=False)
