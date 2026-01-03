@@ -282,7 +282,9 @@ def service_ids_for_date(cal, cdates, target_date):
     return active_services
 
 
-def correlate(buses_parquet, gtfs_dir, output_csv, full_schedule_df, time_window_minutes=15):
+def correlate(
+    buses_parquet, gtfs_dir, output_csv, full_schedule_df, time_window_minutes=15
+):
     # load buses
     buses = pd.read_parquet(buses_parquet)
     print("read input parquet file...")
@@ -493,7 +495,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
 
     correlate(
         args.buses,
