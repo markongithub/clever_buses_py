@@ -42,7 +42,9 @@ def build_merged_df(stop_times_orig, stops, routes, trips, date, agency_tz):
     for c in required_cols:
         if c not in stop_times.columns:
             raise RuntimeError(f"GTFS stop_times.txt missing column {c}")
-    stop_times = stop_times[["trip_id", "arrival_time", "stop_id", "stop_sequence"]]
+    stop_times = stop_times[
+        ["trip_id", "arrival_time", "stop_id", "stop_sequence", "shape_dist_traveled"]
+    ]
     stop_times["stop_sequence"] = stop_times["stop_sequence"].astype(int)
     stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
 
@@ -75,6 +77,7 @@ def build_merged_df(stop_times_orig, stops, routes, trips, date, agency_tz):
 
     # add placeholder columns for observed data; they'll be populated later
     merged["observed_at"] = pd.Series(dtype="datetime64[ns, UTC]")
+    merged["estimated_at"] = pd.Series(dtype="datetime64[ns, UTC]")
     merged["bus_id"] = None
     merged["lat"] = np.nan
     merged["lon"] = np.nan
