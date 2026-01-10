@@ -35,7 +35,7 @@ relevant_keys = ["fs", "dd", "pid", "run", "bid", "id", "lat", "lon", "rt", "op"
 
 
 def time_from_filename(filename):
-    date_str = re.search("buses(.+)\.xml", filename).group(1)
+    date_str = re.search("buses(.+)\\.xml", filename).group(1)
     return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
 
 
