@@ -69,12 +69,97 @@ def best_row_for_observation(merged_df, stop_id, headsign, retrieved_at, window)
     candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
     # TODO: We could make this window flexible if we know a bus is already running very late.
     within = candidates.loc[candidates["dt_abs"] <= window]
-    # print(f"within: {within}")
+    print(f"within: {within}")
     if within.empty:
         # print("Fucked.")
         return None
     best_index = within["dt_abs"].idxmin()
     return best_index
+
+
+def estimate_intermediate_stops(
+    merged_df,
+    trip_id,
+    gtfs_date,
+    prev_stop_seq,
+    current_stop_seq,
+    prev_time,
+    current_time,
+    bus_id,
+):
+    """
+    Estimate arrival times for stops between prev_stop_seq and current_stop_seq
+    on the same trip using linear interpolation based on shape_dist_traveled.
+    """
+    # Find all stops on this trip between the two observations
+    trip_mask = (
+        (merged_df["trip_id"] == trip_id)
+        & (merged_df["gtfs_date"] == gtfs_date)
+        & (merged_df["stop_sequence"] > prev_stop_seq)
+        & (merged_df["stop_sequence"] < current_stop_seq)
+    )
+    intermediate_stops = merged_df.loc[trip_mask].copy()
+
+    if intermediate_stops.empty:
+        return
+
+    # Get shape_dist_traveled for interpolation if available
+    prev_stop_mask = (
+        (merged_df["trip_id"] == trip_id)
+        & (merged_df["gtfs_date"] == gtfs_date)
+        & (merged_df["stop_sequence"] == prev_stop_seq)
+    )
+    current_stop_mask = (
+        (merged_df["trip_id"] == trip_id)
+        & (merged_df["gtfs_date"] == gtfs_date)
+        & (merged_df["stop_sequence"] == current_stop_seq)
+    )
+
+    prev_indices = merged_df.index[prev_stop_mask]
+    current_indices = merged_df.index[current_stop_mask]
+
+    if prev_indices.empty or current_indices.empty:
+        return
+
+    prev_idx = prev_indices[0]
+    current_idx = current_indices[0]
+
+    prev_dist = merged_df.at[prev_idx, "shape_dist_traveled"]
+    current_dist = merged_df.at[current_idx, "shape_dist_traveled"]
+
+    # Use shape_dist_traveled if available, otherwise use stop_sequence
+    use_distance = (
+        pd.notna(prev_dist)
+        and pd.notna(current_dist)
+        and float(current_dist) > float(prev_dist)
+    )
+
+    time_diff = (current_time - prev_time).total_seconds()
+
+    for idx in intermediate_stops.index:
+        # Only estimate if not already observed
+        if pd.isna(merged_df.at[idx, "observed_at"]) and pd.isna(
+            merged_df.at[idx, "estimated_at"]
+        ):
+            if use_distance:
+                # Interpolate based on distance
+                stop_dist = float(merged_df.at[idx, "shape_dist_traveled"])
+                dist_ratio = (stop_dist - float(prev_dist)) / (
+                    float(current_dist) - float(prev_dist)
+                )
+            else:
+                # Interpolate based on stop sequence
+                stop_seq = merged_df.at[idx, "stop_sequence"]
+                dist_ratio = (stop_seq - prev_stop_seq) / (
+                    current_stop_seq - prev_stop_seq
+                )
+
+            estimated_time = prev_time + pd.Timedelta(seconds=time_diff * dist_ratio)
+            merged_df.at[idx, "estimated_at"] = estimated_time
+            merged_df.at[idx, "late"] = int(
+                (estimated_time - merged_df.at[idx, "arrival_dt"]).total_seconds()
+            )
+            merged_df.at[idx, "bus_id"] = bus_id
 
 
 def correlate(
@@ -107,6 +192,8 @@ def correlate(
     total_bus_rows = len(buses)
     buses_processed = 0
     stop_ids_cache = {}
+    # Track previous observations for each bus to enable interpolation
+    bus_last_observation = {}
     for _, r in buses.iterrows():
         buses_processed += 1
         if buses_processed % OUTPUT_FREQUENCY == 0:
@@ -116,8 +203,8 @@ def correlate(
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        # if r.get("id") not in ["2481"]:
-        #    continue
+        if r.get("id") not in ["1750", "1760"]:
+            continue
         if r.get("rt") != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
@@ -147,6 +234,9 @@ def correlate(
         # )
         if not stop_id:
             continue
+            # Check if we have a previous observation for this bus
+        bus_key = r["id"]
+        prev_obs = bus_last_observation.get(bus_key)
         best_index = best_row_for_observation(
             merged, stop_id, fixed_headsign, retrieved_at, window
         )
@@ -160,12 +250,54 @@ def correlate(
             or merged.at[best_index, "stop_sequence"] == 1
         ):
             merged.at[best_index, "observed_at"] = retrieved_at
+            merged.at[best_index, "estimated_at"] = retrieved_at
+
             merged.at[best_index, "bus_id"] = r["id"]
             merged.at[best_index, "lat"] = lat
             merged.at[best_index, "lon"] = lon
-            merged.at[best_index, "late"] = int(
+            late = int(
                 (retrieved_at - merged.at[best_index, "arrival_dt"]).total_seconds()
             )
+            merged.at[best_index, "late"] = late
+
+            # Get trip info for this observation
+            trip_id = merged.at[best_index, "trip_id"]
+            gtfs_date = merged.at[best_index, "gtfs_date"]
+            current_stop_seq = merged.at[best_index, "stop_sequence"]
+
+            print(
+                f"I think bus {bus_key} is on trip {trip_id} and {late} seconds late."
+            )
+            if prev_obs is not None:
+                prev_obs = bus_last_observation[bus_key]
+                # Only interpolate if it's the same trip and date
+                if (
+                    prev_obs["trip_id"] == trip_id
+                    and prev_obs["gtfs_date"] == gtfs_date
+                ):
+                    if current_stop_seq > prev_obs["stop_sequence"]:
+                        # print(
+                        #    f"Want to estimate intermediate stops for bus {bus_key} between {prev_obs['time']} and {retrieved_at}..."
+                        # )
+                        estimate_intermediate_stops(
+                            merged,
+                            trip_id,
+                            gtfs_date,
+                            prev_obs["stop_sequence"],
+                            current_stop_seq,
+                            prev_obs["time"],
+                            retrieved_at,
+                            bus_key,
+                        )
+
+            # Update the last observation for this bus
+            bus_last_observation[bus_key] = {
+                "trip_id": trip_id,
+                "gtfs_date": gtfs_date,
+                "stop_sequence": current_stop_seq,
+                "time": retrieved_at,
+            }
+
         else:
             recorded_bus = merged.at[best_index, "bus_id"]
             if recorded_bus == r["id"]:
@@ -175,7 +307,7 @@ def correlate(
                 pass
             else:
                 print(
-                    f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, "observed_at"]} but at {retrieved_at} we have {r["id"]}"
+                    f"Uh oh. We saw bus {recorded_bus} at {nearest['stop_name']} at {merged.at[best_index, 'observed_at']} with head sign {r['fs']} but at {retrieved_at} we have {r['id']}"
                 )
     summarize_findings(merged)
     merged.to_parquet(f"{output_filename_base}.parquet")
@@ -202,7 +334,8 @@ def summarize_findings(stop_times_merged_df):
     # Stop-level statistics
     total_stops = len(stop_times_merged_df)
     observed_stops = stop_times_merged_df["observed_at"].notna().sum()
-    unobserved_stops = total_stops - observed_stops
+    estimated_stops = stop_times_merged_df["estimated_at"].notna().sum()
+    unobserved_stops = total_stops - estimated_stops
 
     print("\n" + "=" * 60)
     print("CORRELATION SUMMARY")
@@ -257,7 +390,10 @@ def summarize_findings(stop_times_merged_df):
         f"  Stops with observations: {observed_stops} ({observed_stops/total_stops*100:.1f}%)"
     )
     print(
-        f"  Stops without observations: {unobserved_stops} ({unobserved_stops/total_stops*100:.1f}%)"
+        f"  Stops with data (observed or estimated): {estimated_stops} ({estimated_stops/total_stops*100:.1f}%)"
+    )
+    print(
+        f"  Stops without data: {unobserved_stops} ({unobserved_stops/total_stops*100:.1f}%)"
     )
 
 
