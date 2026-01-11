@@ -236,7 +236,7 @@ def correlate(
             continue
             # Check if we have a previous observation for this bus
         bus_key = r["id"]
-        prev_obs = bus_last_observation.get(bus_key)
+        previous_observation = bus_last_observation.get(bus_key)
         best_index = best_row_for_observation(
             merged, stop_id, fixed_headsign, retrieved_at, window
         )
@@ -268,24 +268,24 @@ def correlate(
             print(
                 f"I think bus {bus_key} is on trip {trip_id} and {late} seconds late."
             )
-            if prev_obs is not None:
-                prev_obs = bus_last_observation[bus_key]
+            if previous_observation is not None:
+                previous_observation = bus_last_observation[bus_key]
                 # Only interpolate if it's the same trip and date
                 if (
-                    prev_obs["trip_id"] == trip_id
-                    and prev_obs["gtfs_date"] == gtfs_date
+                    previous_observation["trip_id"] == trip_id
+                    and previous_observation["gtfs_date"] == gtfs_date
                 ):
-                    if current_stop_seq > prev_obs["stop_sequence"]:
+                    if current_stop_seq > previous_observation["stop_sequence"]:
                         # print(
-                        #    f"Want to estimate intermediate stops for bus {bus_key} between {prev_obs['time']} and {retrieved_at}..."
+                        #    f"Want to estimate intermediate stops for bus {bus_key} between {previous_observation['time']} and {retrieved_at}..."
                         # )
                         estimate_intermediate_stops(
                             merged,
                             trip_id,
                             gtfs_date,
-                            prev_obs["stop_sequence"],
+                            previous_observation["stop_sequence"],
                             current_stop_seq,
-                            prev_obs["time"],
+                            previous_observation["time"],
                             retrieved_at,
                             bus_key,
                         )
