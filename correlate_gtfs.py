@@ -56,7 +56,9 @@ def fix_headsign_for_gtfs(headsign):
     return CLEVER_TO_GTFS_SIGN_MISMATCHES.get(headsign, headsign)
 
 
-def best_row_for_observation(merged_df, stop_id, headsign, retrieved_at, window):
+def best_row_for_observation(
+    merged_df, stop_id, headsign, retrieved_at, window, previous_observation
+):
     candidates = merged_df.loc[
         (merged_df["stop_id"] == stop_id) & (merged_df["trip_headsign"] == headsign)
     ].copy()
@@ -67,9 +69,19 @@ def best_row_for_observation(merged_df, stop_id, headsign, retrieved_at, window)
 
     # arrival_dt is tz-aware UTC; compute absolute time diff
     candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
+    if previous_observation is not None:
+        candidates_same_trip = candidates.loc[
+            candidates["trip_id"] == previous_observation["trip_id"]
+        ]
+        if not candidates_same_trip.empty:
+            return candidates_same_trip["dt_abs"].idxmin()
+        # print(
+        #    f"This bus was on {previous_observation['trip_id']} before but we don't have a candidate on that one."
+        # )
+        # TODO: Do this for block_id as well.
     # TODO: We could make this window flexible if we know a bus is already running very late.
     within = candidates.loc[candidates["dt_abs"] <= window]
-    print(f"within: {within}")
+    # print(f"within: {within}")
     if within.empty:
         # print("Fucked.")
         return None
@@ -203,8 +215,8 @@ def correlate(
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        if r.get("id") not in ["1750", "1760"]:
-            continue
+        # if r.get("id") not in ["1750", "1760"]:
+        #    continue
         if r.get("rt") != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
@@ -238,7 +250,7 @@ def correlate(
         bus_key = r["id"]
         previous_observation = bus_last_observation.get(bus_key)
         best_index = best_row_for_observation(
-            merged, stop_id, fixed_headsign, retrieved_at, window
+            merged, stop_id, fixed_headsign, retrieved_at, window, previous_observation
         )
         if best_index is None:
             # print("We didn't get a best row. Fucked.")
@@ -265,9 +277,9 @@ def correlate(
             gtfs_date = merged.at[best_index, "gtfs_date"]
             current_stop_seq = merged.at[best_index, "stop_sequence"]
 
-            print(
-                f"I think bus {bus_key} is on trip {trip_id} and {late} seconds late."
-            )
+            # print(
+            #    f"I think bus {bus_key} is on trip {trip_id} and {late} seconds late."
+            # )
             if previous_observation is not None:
                 previous_observation = bus_last_observation[bus_key]
                 # Only interpolate if it's the same trip and date
