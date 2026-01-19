@@ -73,8 +73,13 @@ def best_row_for_observation(
         return None
 
     # arrival_dt is tz-aware UTC; compute absolute time diff
-    candidates["dt_abs"] = (candidates["arrival_dt"] - retrieved_at).abs()
+    candidates["late"] = retrieved_at - candidates["arrival_dt"]
+    candidates["dt_abs"] = candidates["late"].abs()
     if previous_observation is not None:
+        # We can't be at a stop or trip earlier one we already made.
+        candidates = candidates.loc[
+            candidates["arrival_dt"] >= previous_observation["scheduled_time"]
+        ]
         candidates_same_trip = candidates.loc[
             candidates["trip_id"] == previous_observation["trip_id"]
         ]
@@ -84,8 +89,11 @@ def best_row_for_observation(
         #    f"This bus was on {previous_observation['trip_id']} before but we don't have a candidate on that one."
         # )
         # TODO: Do this for block_id as well.
-    # TODO: We could make this window flexible if we know a bus is already running very late.
-    within = candidates.loc[candidates["dt_abs"] <= window]
+    # TODO: We're now ignoring window. Maybe there should be an early window and a late window?
+    within = candidates.loc[
+        (candidates["late"] >= pd.Timedelta(minutes=-10))
+        & (candidates["late"] <= pd.Timedelta(minutes=20))
+    ]
     # print(f"within: {within}")
     if within.empty:
         # print("Fucked.")
@@ -313,6 +321,7 @@ def correlate(
                 "gtfs_date": gtfs_date,
                 "stop_sequence": current_stop_seq,
                 "time": retrieved_at,
+                "scheduled_time": merged.at[best_index, "arrival_dt"],
             }
 
         else:
