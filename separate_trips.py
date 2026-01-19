@@ -9,9 +9,9 @@ input_file = sys.argv[1]
 output_file = sys.argv[2]
 df = pd.read_parquet(input_file)
 if len(sys.argv) > 3:
-  stop_index = nearest_stop.StopIndex(sys.argv[3])
+    stop_index = nearest_stop.StopIndex(sys.argv[3])
 else:
-  stop_index = None
+    stop_index = None
 
 current_trip = None
 started_at = None
@@ -25,7 +25,9 @@ for name, group in df.groupby("id"):
     for _, row in group.iterrows():
         # Both op and rt seem to get reset randomly. These elements form what I
         # think is the unique ID of a trip.
-        this_trip = {k: row.get(k) for k in ["fs", "dd", "pid", "run", "bid", "id", "rt"]}
+        this_trip = {
+            k: row.get(k) for k in ["fs", "dd", "pid", "run", "bid", "id", "rt"]
+        }
         if stop_index:
             this_stop_maybe = stop_index.find_stop(float(row["lat"]), float(row["lon"]))
         else:
@@ -34,14 +36,20 @@ for name, group in df.groupby("id"):
             stop_name = this_stop_maybe["stop_name"]
         else:
             stop_name = "not near any known stop"
-        this_coords = "{lat},{lon} ({stop_name})".format(lat=row["lat"][:7], lon=row["lon"][:7], stop_name=stop_name)
+        this_coords = "{lat},{lon} ({stop_name})".format(
+            lat=row["lat"][:7], lon=row["lon"][:7], stop_name=stop_name
+        )
         print(
             f'{row["retrieved_at"]}: bus {row["id"]} was seen with route {row.get("rt")} head sign {row["fs"]} at {this_coords})'
         )
         # print(row)
         # When the head sign is "N/A", the dd changes a lot, so we have to ignore
         # those as unique trips.
-        if current_trip != this_trip and this_trip["fs"] != "N/A" and this_trip["rt"] != "OR":
+        if (
+            current_trip != this_trip
+            and this_trip["fs"] != "N/A"
+            and this_trip["rt"] != "OR"
+        ):
             print(f"Starting new trip: {this_trip}")
             if current_trip and current_trip["fs"] not in ["Not in Service", "N/A"]:
                 # print('{start} to {end}: {trip}'.format(trip=current_trip, start=started_at, end=last_timestamp))
