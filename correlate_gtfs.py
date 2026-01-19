@@ -52,8 +52,13 @@ def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
     return st["stop_id"].unique().tolist()
 
 
-def fix_headsign_for_gtfs(headsign):
-    return CLEVER_TO_GTFS_SIGN_MISMATCHES.get(headsign, headsign)
+def fix_headsign_for_gtfs(position_dict):
+    if (
+        position_dict["fs"] == "220 James St - Molloy Rd - Airpark"
+        and position_dict["dd"] == "TO HUB"
+    ):
+        return "220 James St - To Hub"
+    return CLEVER_TO_GTFS_SIGN_MISMATCHES.get(position_dict["fs"], position_dict["fs"])
 
 
 def best_row_for_observation(
@@ -220,7 +225,7 @@ def correlate(
         if r.get("rt") != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
-        fixed_headsign = fix_headsign_for_gtfs(r["fs"])
+        fixed_headsign = fix_headsign_for_gtfs(r)
         stop_ids_from_cache = stop_ids_cache.get(fixed_headsign)
         if stop_ids_from_cache:
             stop_ids_for_headsign = stop_ids_from_cache
