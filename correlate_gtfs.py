@@ -28,6 +28,7 @@ CLEVER_TO_GTFS_SIGN_MISMATCHES = {
     # headsign often, even when it should be "220 James St - To Hub". Not sure
     # what to do about that yet.
 }
+MIN_TRIP_OBSERVATIONS = 3
 
 
 def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
@@ -67,7 +68,7 @@ def best_row_for_observation(
     candidates = merged_df.loc[
         (merged_df["stop_id"] == stop_id) & (merged_df["trip_headsign"] == headsign)
     ].copy()
-    # print(f"Candidates: {candidates}")
+    # print(f"Candidates for {headsign} near {stop_id} at {retrieved_at}: {candidates}")
     if candidates.empty:
         print(f"No candidates for {headsign} near {stop_id} at {retrieved_at}")
         return None
@@ -228,8 +229,8 @@ def correlate(
         if pd.isna(lat) or pd.isna(lon):
             print("No lat/lon, nothing we can do here.")
             continue
-        # if r.get("id") not in ["1750", "1760"]:
-        #    continue
+        # if r.get("id") not in ["2435"]:  # , "1760"]:
+        #     continue
         if r.get("rt") != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
@@ -348,7 +349,9 @@ def summarize_findings(stop_times_merged_df):
     trip_groups = stop_times_merged_df.groupby(["gtfs_date", "trip_id"])
 
     # Identify trips with and without observations
-    trips_with_obs_mask = trip_groups["observed_at"].apply(lambda x: x.notna().any())
+    trips_with_obs_mask = trip_groups["observed_at"].apply(
+        lambda x: x.notna().sum() >= MIN_TRIP_OBSERVATIONS
+    )
     trips_with_observations = trips_with_obs_mask.sum()
 
     # Total unique trips
