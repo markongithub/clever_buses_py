@@ -215,6 +215,16 @@ def correlate(
     stop_index = StopIndex(stops_path)
     window = pd.Timedelta(minutes=time_window_minutes)
 
+    earliest_scheduled_time = full_schedule_df["arrival_dt"].min() + pd.Timedelta(
+        minutes=-30
+    )
+    latest_scheduled_time = full_schedule_df["arrival_dt"].max() + pd.Timedelta(
+        minutes=30
+    )
+    buses = buses.loc[
+        (buses["retrieved_at"] >= earliest_scheduled_time)
+        & (buses["retrieved_at"] <= latest_scheduled_time)
+    ]
     total_bus_rows = len(buses)
     buses_processed = 0
     stop_ids_cache = {}
