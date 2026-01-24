@@ -234,6 +234,13 @@ def correlate(
         buses_processed += 1
         if buses_processed % OUTPUT_FREQUENCY == 0:
             print(f"Processed {buses_processed}/{total_bus_rows}...")
+        # Check if we have a previous observation for this bus
+        bus_key = r["id"]
+        previous_observation = bus_last_observation.get(bus_key)
+        if previous_observation and r.get("rt") == "OR":
+            route = previous_observation["route"]
+        else:
+            route = r.get("rt")
         lat = float(r.get("lat", np.nan))
         lon = float(r.get("lon", np.nan))
         if pd.isna(lat) or pd.isna(lon):
@@ -241,7 +248,7 @@ def correlate(
             continue
         # if r.get("id") not in ["2435"]:  # , "1760"]:
         #     continue
-        if r.get("rt") != CLEVER_ROUTE_ID:
+        if route != CLEVER_ROUTE_ID:
             continue
         # print(r.to_dict())
         fixed_headsign = fix_headsign_for_gtfs(r)
@@ -270,9 +277,6 @@ def correlate(
         # )
         if not stop_id:
             continue
-            # Check if we have a previous observation for this bus
-        bus_key = r["id"]
-        previous_observation = bus_last_observation.get(bus_key)
         best_index = best_row_for_observation(
             merged, stop_id, fixed_headsign, retrieved_at, window, previous_observation
         )
@@ -333,6 +337,7 @@ def correlate(
                 "stop_sequence": current_stop_seq,
                 "time": retrieved_at,
                 "scheduled_time": merged.at[best_index, "arrival_dt"],
+                "route": route,
             }
 
         else:
