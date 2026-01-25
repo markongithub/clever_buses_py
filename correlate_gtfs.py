@@ -92,8 +92,8 @@ def best_row_for_observation(
         # TODO: Do this for block_id as well.
     # TODO: We're now ignoring window. Maybe there should be an early window and a late window?
     within = candidates.loc[
-        (candidates["late"] >= pd.Timedelta(minutes=-10))
-        & (candidates["late"] <= pd.Timedelta(minutes=20))
+        (candidates["late"] >= pd.Timedelta(minutes=-6))
+        & (candidates["late"] <= pd.Timedelta(minutes=30))
     ]
     # print(f"within: {within}")
     if within.empty:
