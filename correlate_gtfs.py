@@ -300,7 +300,7 @@ def correlate(
         # print(f"best_index: {best_index}")
         # Only populate if we haven't already observed this scheduled stop
         if (
-            pd.isna(merged.at[best_index, "observed_at"])
+            pd.isna(merged.at[best_index, "estimated_at"])
             or merged.at[best_index, "stop_sequence"] == 1
         ):
             merged.at[best_index, "observed_at"] = retrieved_at
