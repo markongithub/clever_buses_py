@@ -29,6 +29,7 @@ CLEVER_TO_GTFS_SIGN_MISMATCHES = {
     # what to do about that yet.
 }
 MIN_TRIP_OBSERVATIONS = 3
+PREVIOUS_OBSERVATION_MAX_MINUTES = 5
 
 
 def stop_ids_by_headsign(stop_times_df, trips_df, headsign):
@@ -236,8 +237,22 @@ def correlate(
             print(f"Processed {buses_processed}/{total_bus_rows}...")
         # Check if we have a previous observation for this bus
         bus_key = r["id"]
+        retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
         previous_observation = bus_last_observation.get(bus_key)
-        if previous_observation and r.get("rt") == "OR":
+        if previous_observation and previous_observation["time"] >= retrieved_at:
+            raise ValueError(
+                f"How is it {retrieved_at} and we have an observation for bus {bus_key} at {previous_observation['time']}?"
+            )
+        if previous_observation and previous_observation["time"] <= (
+            retrieved_at - pd.Timedelta(minutes=PREVIOUS_OBSERVATION_MAX_MINUTES)
+        ):
+            # These cached values are only useful if they're recent.
+            previous_observation = None
+        if (
+            previous_observation
+            and r.get("rt") == "OR"
+            and r.get("fs") == previous_observation["headsign"]
+        ):
             route = previous_observation["route"]
         else:
             route = r.get("rt")
@@ -271,7 +286,6 @@ def correlate(
             # print(f"Nearest stop: {nearest['stop_name']}")
             stop_id = str(nearest["stop_id"])
 
-        retrieved_at = pd.to_datetime(r["retrieved_at"], utc=True)
         # print(
         #    f"Considering bus {r['id']} at {nearest['stop_name']} at {retrieved_at}..."
         # )
@@ -338,6 +352,7 @@ def correlate(
                 "time": retrieved_at,
                 "scheduled_time": merged.at[best_index, "arrival_dt"],
                 "route": route,
+                "headsign": r["fs"],
             }
 
         else:
